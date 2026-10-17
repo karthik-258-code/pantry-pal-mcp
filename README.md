@@ -37,6 +37,11 @@ Pantry Pal is a **self-hosted MCP server** (Streamable HTTP, MCP spec `2025-11-2
 | `update_household_profile` | "My son is allergic to peanuts, we're a family of 4" |
 | `get_household_profile` | "What do you remember about us?" |
 | `rate_recipe` | "The kids loved the frittata" / "That was too spicy" |
+| `plan_meals` (Bedrock) | "Plan dinners for the next 5 days" |
+| `get_meal_plan` | "What's for dinner tomorrow?" |
+| `prepare_grocery_order` | "Order it" (prices the list and asks for confirmation) |
+| `confirm_grocery_order` | "Yes, place it" (simulated checkout, no real payment) |
+| `receive_grocery_order` | "My groceries arrived" |
 | `add_pantry_item` | "I bought 6 eggs that expire in 10 days" |
 | `use_pantry_item` | "I used 200 grams of chicken" |
 | `list_pantry` | "What's about to go bad?" |
@@ -92,6 +97,10 @@ Put a JPEG or PNG under 3.75 MB in the `photos/` folder, for example `photos/fri
 ### Household memory
 
 Allergies, diet, household size, dislikes and recipe ratings are saved in `data/pantry.json` and survive restarts. Every recipe request uses them, and any generated recipe that mentions an allergen is filtered out as a safety net.
+
+### Plan the week and check out
+
+`plan_meals` asks Bedrock for a multi-day plan that cooks the soonest-expiring food first and reuses bought ingredients across days, then adds what's missing to the shopping list. `prepare_grocery_order` prices the list at a simulated store (`src/catalog.ts`) and returns a quote. `confirm_grocery_order` places it only after the user says yes, and quotes expire after 30 minutes. `receive_grocery_order` stocks the pantry on delivery. **No real purchases are made.**
 
 ### Expose it to a remote MCP client
 

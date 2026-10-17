@@ -17,7 +17,8 @@ const SYSTEM = `You are a friendly voice assistant in the style of Alexa+. Today
 Use the Pantry Pal tools for anything about food, the pantry, recipes or shopping.
 Answer in 1-2 short spoken sentences. Never read out long lists unless asked.
 Do not narrate your reasoning; reply only with what Alexa would say out loud.
-Photos live in the server's photos folder: pass just the file name (e.g. "fridge.jpg") to scan_groceries.`;
+Photos live in the server's photos folder: pass just the file name (e.g. "fridge.jpg") to scan_groceries.
+Never call confirm_grocery_order in the same turn as prepare_grocery_order: read the total, ask, and wait for the user's yes.`;
 
 const client = new Client({ name: "pantry-pal-demo-agent", version: "1.0.0" });
 await client.connect(

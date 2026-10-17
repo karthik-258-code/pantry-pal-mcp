@@ -34,11 +34,49 @@ export interface Feedback {
   at: string;
 }
 
+export interface PlanDay {
+  day: string;
+  recipe: string;
+  minutes: number;
+  uses: string[];
+  missing: string[];
+}
+
+export interface MealPlan {
+  createdAt: string;
+  meal: string;
+  days: PlanDay[];
+}
+
+export interface OrderLine {
+  name: string;
+  packs: number;
+  unitPrice: number;
+  lineTotal: number;
+}
+
+export type OrderStatus = "pending" | "placed" | "delivered";
+
+export interface Order {
+  id: string;
+  store: string;
+  lines: OrderLine[];
+  subtotal: number;
+  deliveryFee: number;
+  total: number;
+  status: OrderStatus;
+  createdAt: string;
+  placedAt?: string;
+  deliveredAt?: string;
+}
+
 export interface StoreData {
   pantry: PantryItem[];
   shopping: ShoppingItem[];
   profile: HouseholdProfile;
   feedback: Feedback[];
+  mealPlan?: MealPlan;
+  orders: Order[];
 }
 
 const DAY_MS = 24 * 60 * 60 * 1000;
@@ -50,6 +88,7 @@ export const emptyData = (): StoreData => ({
   shopping: [],
   profile: { people: 2, allergies: [], dislikes: [] },
   feedback: [],
+  orders: [],
 });
 
 let cache: StoreData | null = null;
@@ -248,6 +287,72 @@ export async function addFeedback(recipe: string, rating: Rating, note?: string)
 
 export async function recentFeedback(limit = 10): Promise<Feedback[]> {
   return (await load()).feedback.slice(-limit);
+}
+
+// ---------- Meal plan ----------
+
+export async function saveMealPlan(plan: MealPlan): Promise<void> {
+  (await load()).mealPlan = plan;
+  await save();
+}
+
+export async function getMealPlan(): Promise<MealPlan | undefined> {
+  const plan = (await load()).mealPlan;
+  return plan ? structuredClone(plan) : undefined;
+}
+
+// ---------- Orders (simulated checkout) ----------
+
+const ORDER_TTL_MS = 30 * 60 * 1000;
+
+export async function createOrder(order: Omit<Order, "id" | "status" | "createdAt">): Promise<Order> {
+  const data = await load();
+  // Only one pending quote at a time: a new quote replaces the old one.
+  data.orders = data.orders.filter((o) => o.status !== "pending");
+  const full: Order = {
+    ...order,
+    id: `PP-${Math.floor(1000 + Math.random() * 9000)}`,
+    status: "pending",
+    createdAt: new Date().toISOString(),
+  };
+  data.orders.push(full);
+  await save();
+  return structuredClone(full);
+}
+
+export async function getPendingOrder(): Promise<Order | undefined> {
+  const o = (await load()).orders.find((x) => x.status === "pending");
+  return o ? structuredClone(o) : undefined;
+}
+
+/** Places a pending order and removes its items from the shopping list. */
+export async function placeOrder(id: string): Promise<{ order?: Order; error?: string }> {
+  const data = await load();
+  const order = data.orders.find((o) => o.id.toLowerCase() === id.trim().toLowerCase());
+  if (!order) return { error: `I can't find order ${id}.` };
+  if (order.status !== "pending") return { error: `Order ${order.id} is already ${order.status}.` };
+  if (Date.now() - Date.parse(order.createdAt) > ORDER_TTL_MS) {
+    return { error: `The quote for ${order.id} expired. Ask me to prepare a new order.` };
+  }
+  order.status = "placed";
+  order.placedAt = new Date().toISOString();
+  const names = new Set(order.lines.map((l) => norm(l.name)));
+  data.shopping = data.shopping.filter((s) => !names.has(norm(s.name)));
+  await save();
+  return { order: structuredClone(order) };
+}
+
+/** Marks the latest placed order (or a specific one) delivered and stocks the pantry. */
+export async function receiveOrder(id?: string): Promise<{ order?: Order; error?: string }> {
+  const data = await load();
+  const placed = data.orders.filter((o) => o.status === "placed");
+  const order = id ? placed.find((o) => o.id.toLowerCase() === id.trim().toLowerCase()) : placed[placed.length - 1];
+  if (!order) return { error: "There's no order waiting for delivery." };
+  order.status = "delivered";
+  order.deliveredAt = new Date().toISOString();
+  await save();
+  for (const l of order.lines) await addPantryItem({ name: l.name, quantity: l.packs });
+  return { order: structuredClone(order) };
 }
 
 export async function resetStore(data: StoreData = emptyData()): Promise<void> {
