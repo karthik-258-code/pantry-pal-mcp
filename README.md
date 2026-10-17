@@ -90,6 +90,16 @@ You: what can I cook with those tonight?
 Alexa: ...
 ```
 
+### Try the Echo Show-style web app (simulated Alexa+)
+
+With the MCP server running, in a second terminal:
+
+```bash
+npm run web
+```
+
+Open http://127.0.0.1:3001 in **Chrome or Edge**. Tap the mic and talk, or type. Use the camera button to scan a fridge or receipt photo. Replies are spoken with **Amazon Polly**, and recipes, meal plans and orders show as cards. The right-hand panel shows every MCP tool call live.
+
 ### Scan a fridge photo or receipt
 
 Put a JPEG or PNG under 3.75 MB in the `photos/` folder, for example `photos/fridge.jpg`, then tell the agent `scan fridge.jpg`. Bedrock vision identifies the food, estimates expiry dates and adds everything to the pantry. For receipts, say `scan receipt.jpg, it's a receipt`.
@@ -111,9 +121,12 @@ The server binds to `127.0.0.1` by default. To reach it from a hosted client, pu
 | Service | Where | What for |
 |---|---|---|
 | **Amazon Bedrock Runtime, Converse API** | `src/bedrock.ts` `generateRecipes()` | Turns the expiry-sorted pantry plus constraints (meal, servings, diet, time) into structured JSON recipes with used and missing ingredients |
-| **Amazon Bedrock Runtime, Converse tool use** | `src/demo-agent.ts` | The simulated Alexa+ assistant: MCP tool schemas are mapped to Bedrock `toolConfig`, and the model decides which MCP tool to call |
+| **Amazon Bedrock Runtime, Converse tool use** | `src/agent.ts` | The simulated Alexa+ assistant: MCP tool schemas are mapped to Bedrock `toolConfig`, and the model decides which MCP tools to call, in a loop of up to 8 steps |
+| **Amazon Bedrock Runtime, Converse with images** | `src/bedrock.ts` `scanGroceries()` | Nova vision reads fridge, shelf and receipt photos and estimates expiry dates |
+| **Amazon Bedrock Runtime, Converse** | `src/bedrock.ts` `generateMealPlan()` | Multi-day, waste-aware meal plans |
+| **Amazon Polly (neural TTS)** | `src/web.ts` `/api/tts` | Alexa-style spoken replies in the web app (`POLLY_VOICE`, default Joanna) |
 
-The default model is `us.amazon.nova-lite-v1:0` (Amazon Nova Lite through a cross-region inference profile). You can switch to any Converse-compatible model with `BEDROCK_MODEL_ID`. The IAM identity needs `bedrock:InvokeModel` on that model or inference profile, and model access must be enabled in the Bedrock console.
+The default model is `us.amazon.nova-lite-v1:0` (Amazon Nova Lite through a cross-region inference profile). You can switch to any Converse-compatible model with `BEDROCK_MODEL_ID`. The IAM identity needs `bedrock:InvokeModel` on that model or inference profile, and `polly:SynthesizeSpeech` for the web app's voice. Without Polly access, the web app falls back to the browser's built-in voice.
 
 ## Configuration
 

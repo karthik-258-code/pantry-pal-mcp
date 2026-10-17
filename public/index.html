@@ -1,0 +1,49 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Pantry Pal · Simulated Alexa+</title>
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+  <div class="device">
+    <header class="topbar">
+      <div class="clock" id="clock"></div>
+      <div class="brand">Pantry Pal <span>simulated Alexa+ experience</span></div>
+      <div class="top-actions">
+        <button id="muteBtn" class="icon-btn" title="Mute voice" aria-label="Mute voice">🔊</button>
+        <button id="mcpBtn" class="icon-btn" title="Show or hide MCP activity" aria-label="Toggle MCP activity">🧩</button>
+        <button id="resetBtn" class="icon-btn" title="New conversation" aria-label="New conversation">↺</button>
+      </div>
+    </header>
+
+    <main class="stage">
+      <section class="conversation" aria-live="polite">
+        <p id="userSaid" class="user-said"></p>
+        <h1 id="alexaSays" class="alexa-says">Hi! Ask me what to cook, show me your fridge, or plan the week.</h1>
+        <div id="cards" class="cards"></div>
+        <div id="chips" class="chips"></div>
+      </section>
+
+      <aside id="mcpPanel" class="mcp-panel">
+        <h2>MCP activity <small>Streamable HTTP</small></h2>
+        <ol id="mcpLog"></ol>
+      </aside>
+    </main>
+
+    <footer class="controls">
+      <label class="icon-btn upload" title="Scan a photo" aria-label="Scan a photo">📷<input id="photoInput" type="file" accept="image/*" hidden></label>
+      <select id="photoSource" title="What the photo shows">
+        <option value="fridge">Fridge</option>
+        <option value="pantry">Shelf</option>
+        <option value="receipt">Receipt</option>
+      </select>
+      <input id="textInput" type="text" placeholder="Type, or tap the mic and talk…" autocomplete="off">
+      <button id="micBtn" class="mic" title="Talk" aria-label="Talk">🎤</button>
+    </footer>
+    <div id="ring" class="ring"></div>
+  </div>
+  <script src="app.js"></script>
+</body>
+</html>
