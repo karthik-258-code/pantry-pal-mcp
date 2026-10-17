@@ -140,6 +140,10 @@ The default model is `us.amazon.nova-lite-v1:0` (Amazon Nova Lite through a cros
 | `DATA_FILE` | `data/pantry.json` | Storage location |
 | `MCP_URL` | `http://127.0.0.1:3000/mcp` | Server URL used by the demo agent |
 
+## Open-source spin-off: mcp-bedrock-bridge
+
+[`bridge/`](bridge/) is a standalone, MIT-licensed library that lets any MCP server's tools be used with the Amazon Bedrock Converse API. It covers tool schema mapping, result conversion and a tested agent loop. It's published as its own repository for the Open Source mini challenge.
+
 ## License
 
 [MIT](LICENSE)

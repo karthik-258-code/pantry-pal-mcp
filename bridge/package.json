@@ -1,0 +1,37 @@
+{
+  "name": "mcp-bedrock-bridge",
+  "version": "0.1.0",
+  "description": "Use any MCP server's tools with the Amazon Bedrock Converse API: schema mapping, result conversion and a tool-use agent loop.",
+  "type": "module",
+  "license": "MIT",
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    }
+  },
+  "files": ["dist"],
+  "engines": {
+    "node": ">=20"
+  },
+  "scripts": {
+    "build": "tsc",
+    "typecheck": "tsc --noEmit",
+    "test": "node --import tsx --test test/bridge.test.ts",
+    "example": "tsx examples/basic.ts"
+  },
+  "keywords": ["mcp", "model-context-protocol", "amazon-bedrock", "bedrock", "converse", "tool-use", "agent"],
+  "peerDependencies": {
+    "@aws-sdk/client-bedrock-runtime": "^3.700.0",
+    "@modelcontextprotocol/sdk": "^1.24.0"
+  },
+  "devDependencies": {
+    "@aws-sdk/client-bedrock-runtime": "^3.700.0",
+    "@modelcontextprotocol/sdk": "^1.24.0",
+    "@types/node": "^22.0.0",
+    "tsx": "^4.19.0",
+    "typescript": "^5.6.0"
+  }
+}
