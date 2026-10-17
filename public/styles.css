@@ -1,0 +1,94 @@
+:root {
+  --bg: #0b1020; --panel: #141b2f; --card: #1b2440; --line: #26314f;
+  --text: #eef2ff; --muted: #9aa5c4; --accent: #31c4f3;
+  --ok: #34d399; --warn: #fbbf24; --bad: #f87171;
+}
+* { box-sizing: border-box; }
+html, body { margin: 0; height: 100%; background: #05070f; color: var(--text); font-family: "Segoe UI", system-ui, -apple-system, sans-serif; }
+button, input, select { font-family: inherit; }
+
+.device { position: relative; max-width: 1280px; height: 100vh; margin: 0 auto; display: flex; flex-direction: column; overflow: hidden;
+  background: radial-gradient(1200px 600px at 20% 0%, #1a2550 0%, var(--bg) 60%); }
+
+.topbar { display: flex; align-items: center; justify-content: space-between; padding: 14px 24px; }
+.clock { font-size: 22px; font-weight: 600; min-width: 110px; }
+.brand { font-weight: 700; letter-spacing: .3px; }
+.brand span { color: var(--muted); font-weight: 400; font-size: 13px; margin-left: 8px; }
+.top-actions { display: flex; gap: 8px; }
+.icon-btn { background: var(--panel); border: 1px solid var(--line); color: var(--text); border-radius: 999px; width: 42px; height: 42px;
+  font-size: 18px; cursor: pointer; display: inline-flex; align-items: center; justify-content: center; }
+
+.stage { flex: 1; display: grid; grid-template-columns: 1fr 340px; gap: 20px; padding: 8px 24px; min-height: 0; }
+body.hide-mcp .stage { grid-template-columns: 1fr; }
+body.hide-mcp .mcp-panel { display: none; }
+
+.conversation { display: flex; flex-direction: column; min-height: 0; overflow: auto; padding-right: 4px; }
+.user-said { color: var(--muted); font-size: 18px; min-height: 24px; margin: 8px 0; }
+.alexa-says { font-size: 30px; line-height: 1.3; font-weight: 600; margin: 0 0 18px; white-space: pre-line; }
+
+.cards { display: flex; flex-direction: column; gap: 14px; }
+.carousel { display: flex; gap: 14px; overflow-x: auto; padding-bottom: 6px; scroll-snap-type: x mandatory; }
+.card { background: var(--card); border: 1px solid #2a3558; border-radius: 18px; padding: 16px 18px; min-width: 260px; scroll-snap-align: start; }
+.carousel .card { flex: 0 0 300px; }
+.card h3 { margin: 0 0 6px; font-size: 18px; }
+.card .meta { color: var(--muted); font-size: 13px; margin-bottom: 10px; }
+.card.success { border-color: rgba(52, 211, 153, .55); }
+.card.error { border-color: rgba(248, 113, 113, .55); color: #fecaca; }
+.card ol { margin: 8px 0 0 18px; padding: 0; color: #cdd5f0; font-size: 14px; }
+
+.tags { display: flex; flex-wrap: wrap; gap: 6px; margin: 6px 0; }
+.tag { font-size: 12px; padding: 3px 9px; border-radius: 999px; background: #22304f; }
+.tag.use { background: rgba(52, 211, 153, .15); color: var(--ok); }
+.tag.buy { background: rgba(251, 191, 36, .15); color: var(--warn); }
+
+.rows { list-style: none; margin: 0; padding: 0; }
+.rows li { display: flex; align-items: center; gap: 10px; padding: 7px 0; border-bottom: 1px solid var(--line); font-size: 15px; }
+.rows li:last-child { border: 0; }
+.dot { width: 10px; height: 10px; border-radius: 50%; background: var(--ok); flex: 0 0 auto; }
+.dot.warn { background: var(--warn); }
+.dot.bad { background: var(--bad); }
+
+.receipt .line { display: flex; justify-content: space-between; gap: 16px; font-size: 15px; padding: 4px 0; }
+.receipt .total { font-size: 20px; font-weight: 700; border-top: 1px dashed #3a4670; margin-top: 8px; padding-top: 8px; }
+.actions { display: flex; gap: 10px; margin-top: 14px; }
+.btn { border: 0; border-radius: 999px; padding: 10px 18px; font-weight: 600; cursor: pointer; font-size: 15px; }
+.btn.primary { background: var(--accent); color: #04263a; }
+.btn.ghost { background: var(--line); color: var(--text); }
+.photo { max-width: 220px; border-radius: 14px; border: 1px solid #2a3558; }
+
+.chips { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 18px; }
+.chip { background: transparent; border: 1px solid #33416a; color: var(--text); border-radius: 999px; padding: 8px 14px; cursor: pointer; font-size: 14px; }
+.chip:hover { border-color: var(--accent); }
+
+.mcp-panel { background: var(--panel); border: 1px solid var(--line); border-radius: 18px; padding: 14px; overflow: auto; min-height: 0; }
+.mcp-panel h2 { font-size: 15px; margin: 0 0 10px; }
+.mcp-panel small { color: var(--muted); font-weight: 400; }
+#mcpLog { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 8px; }
+#mcpLog li { background: #0f1527; border-radius: 10px; padding: 8px 10px; font-size: 12px; font-family: ui-monospace, Consolas, monospace; word-break: break-word; }
+#mcpLog .name { color: var(--accent); font-weight: 700; }
+#mcpLog .err .name { color: var(--bad); }
+#mcpLog .ms { color: var(--muted); float: right; }
+#mcpLog details pre { white-space: pre-wrap; color: #b8c2e0; margin: 6px 0 0; }
+
+.controls { display: flex; gap: 10px; align-items: center; padding: 14px 24px 26px; }
+.controls input[type=text] { flex: 1; background: var(--panel); border: 1px solid var(--line); color: var(--text); border-radius: 999px; padding: 12px 18px; font-size: 16px; outline: none; }
+.controls input[type=text]:focus { border-color: var(--accent); }
+.controls select { background: var(--panel); color: var(--text); border: 1px solid var(--line); border-radius: 999px; padding: 10px 12px; }
+.upload { cursor: pointer; }
+.mic { width: 56px; height: 56px; border-radius: 50%; border: 0; background: var(--accent); font-size: 24px; cursor: pointer; }
+.mic.on { background: var(--bad); }
+.mic:disabled { opacity: .4; cursor: not-allowed; }
+
+/* Alexa light bar */
+.ring { position: absolute; left: 0; right: 0; bottom: 0; height: 6px; transition: background .3s; }
+.ring.listening { background: linear-gradient(90deg, #0ea5e9, #22d3ee, #0ea5e9); animation: pulse 1s ease-in-out infinite; }
+.ring.thinking { background: linear-gradient(90deg, transparent, #3b82f6, transparent) no-repeat; background-size: 50% 100%; animation: sweep 1.2s linear infinite; }
+.ring.speaking { background: #22d3ee; animation: pulse .6s ease-in-out infinite; }
+@keyframes pulse { 50% { opacity: .4; } }
+@keyframes sweep { from { background-position: -50% 0; } to { background-position: 150% 0; } }
+
+@media (max-width: 900px) {
+  .stage { grid-template-columns: 1fr; }
+  .mcp-panel { max-height: 200px; }
+  .alexa-says { font-size: 24px; }
+}
