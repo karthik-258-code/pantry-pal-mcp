@@ -63,6 +63,7 @@ while (true) {
         .map((c) => c.text ?? "")
         .join("")
         .replace(/<thinking>[\s\S]*?<\/thinking>/gi, "")
+        .replace(/<\/?response>/gi, "")
         .trim();
       console.log(`\nAlexa: ${say}`);
       break;

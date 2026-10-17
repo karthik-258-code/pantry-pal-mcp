@@ -104,10 +104,15 @@ export async function generateRecipes(opts: {
     }));
 
   // Safety net: never return a recipe that mentions an allergen, even if the model slipped.
-  const allergens = profile.allergies.map((a) => a.toLowerCase());
+  // "eggs" must also catch "egg", "peanuts" must catch "peanut", etc.
+  const escapeRe = (s: string) => s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  const allergens = profile.allergies.map((a) => {
+    const stem = a.trim().toLowerCase().replace(/(es|s)$/, "");
+    return new RegExp(`\\b${escapeRe(stem)}(e?s)?\\b`, "i");
+  });
   return recipes.filter((r) => {
-    const text = [r.name, ...r.uses, ...r.missing, ...r.steps].join(" ").toLowerCase();
-    return !allergens.some((a) => text.includes(a));
+    const text = [r.name, ...r.uses, ...r.missing, ...r.steps].join(" ");
+    return !allergens.some((re) => re.test(text));
   });
 }
 
