@@ -79,6 +79,13 @@ body.hide-mcp .mcp-panel { display: none; }
 .mic.on { background: var(--bad); }
 .mic:disabled { opacity: .4; cursor: not-allowed; }
 
+/* Status line */
+.status { margin: 4px 0 0; font-size: 14px; color: var(--muted); letter-spacing: .2px; }
+.status[data-mode="listening"] { color: #22d3ee; font-weight: 600; }
+.status[data-mode="thinking"] { color: #93c5fd; }
+.status[data-mode="speaking"] { color: var(--accent); }
+.mic.on { animation: pulse 1s ease-in-out infinite; }
+
 /* Alexa light bar */
 .ring { position: absolute; left: 0; right: 0; bottom: 0; height: 6px; transition: background .3s; }
 .ring.listening { background: linear-gradient(90deg, #0ea5e9, #22d3ee, #0ea5e9); animation: pulse 1s ease-in-out infinite; }
