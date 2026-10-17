@@ -216,11 +216,25 @@ function cardFor(c) {
   }
 }
 
+// Prefer neural/online voices (Edge: "Microsoft Aria/Jenny Online (Natural)", Chrome: "Google US English").
+function bestVoice() {
+  if (!("speechSynthesis" in window)) return null;
+  const voices = speechSynthesis.getVoices().filter((v) => v.lang && v.lang.startsWith("en"));
+  const prefs = [/Natural/i, /Online/i, /Google US English/i, /Samantha/i, /Jenny|Aria/i];
+  for (const p of prefs) {
+    const v = voices.find((x) => p.test(x.name));
+    if (v) return v;
+  }
+  return voices[0] || null;
+}
+if ("speechSynthesis" in window) speechSynthesis.getVoices(); // voices load lazily in some browsers
+
 // ---------- Voice out: Amazon Polly, with browser speech as fallback ----------
 async function speak(text) {
   if (state.muted || !text) return setRing("");
   setRing("speaking");
   try {
+    if (state.pollyOff) throw new Error("Polly unavailable");
     const r = await fetch("/api/tts", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ text }) });
     if (!r.ok) {
       const d = await r.json().catch(() => ({}));
@@ -232,6 +246,7 @@ async function speak(text) {
     audio.onended = () => { setRing(""); URL.revokeObjectURL(url); };
     await audio.play();
   } catch (err) {
+    state.pollyOff = true; // don't add Polly latency to every reply once it has failed
     if (!state.voiceWarned) {
       state.voiceWarned = true;
       const li = el("li", "err");
@@ -240,6 +255,9 @@ async function speak(text) {
     }
     if ("speechSynthesis" in window) {
       const u = new SpeechSynthesisUtterance(text);
+      const voice = bestVoice();
+      if (voice) u.voice = voice;
+      u.rate = 1.03;
       u.onend = () => setRing("");
       speechSynthesis.speak(u);
     } else setRing("");
