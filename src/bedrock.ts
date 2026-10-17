@@ -58,6 +58,9 @@ export async function generateRecipes(opts: {
   return parseRecipes(text);
 }
 
+// The prompt says these are always available, but models sometimes list them anyway.
+const STAPLES = new Set(["salt", "pepper", "black pepper", "salt and pepper", "oil", "cooking oil", "olive oil", "vegetable oil", "water"]);
+
 function parseRecipes(text: string): Recipe[] {
   const match = text.match(/\[[\s\S]*\]/);
   if (!match) throw new Error("Model did not return a JSON array");
@@ -70,7 +73,7 @@ function parseRecipes(text: string): Recipe[] {
       minutes: Number(r.minutes) || 30,
       servings: Number(r.servings) || 2,
       uses: strings(r.uses),
-      missing: strings(r.missing),
+      missing: strings(r.missing).filter((m) => !STAPLES.has(m.trim().toLowerCase())),
       steps: strings(r.steps).slice(0, 6),
     }));
 }
