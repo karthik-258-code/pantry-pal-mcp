@@ -1,5 +1,5 @@
 import { BedrockRuntimeClient, ConverseCommand, type ContentBlock } from "@aws-sdk/client-bedrock-runtime";
-import { describe, type Feedback, type HouseholdProfile, type PantryItem } from "./store.js";
+import { describe, type Feedback, type HouseholdProfile, type PantryItem, type PlanDay } from "./store.js";
 
 export const MODEL_ID = process.env.BEDROCK_MODEL_ID ?? "us.amazon.nova-lite-v1:0";
 
@@ -157,4 +157,82 @@ export async function scanGroceries(bytes: Uint8Array, format: ImageFormat, sour
       expiresInDays:
         typeof i.expires_in_days === "number" && i.expires_in_days >= 0 ? Math.round(i.expires_in_days) : undefined,
     }));
+}
+
+// ---------- Shared helpers ----------
+
+const escapeRe = (s: string) => s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+
+/** Returns the first allergy mentioned in the texts, matching singular and plural forms. */
+export function findAllergen(profile: HouseholdProfile, texts: string[]): string | undefined {
+  const text = texts.join(" ");
+  return profile.allergies.find((a) => {
+    const stem = a.trim().toLowerCase().replace(/(es|s)$/, "");
+    return new RegExp(`\\b${escapeRe(stem)}(e?s)?\\b`, "i").test(text);
+  });
+}
+
+function householdContext(profile: HouseholdProfile, feedback: Feedback[]): string {
+  return [
+    `Household: ${profile.people} people.`,
+    profile.diet && `Household diet: ${profile.diet}.`,
+    profile.allergies.length && `ALLERGIES (never use): ${profile.allergies.join(", ")}.`,
+    profile.dislikes.length && `Dislikes (avoid): ${profile.dislikes.join(", ")}.`,
+    profile.notes && `Notes: ${profile.notes}.`,
+    feedback.length &&
+      `Past feedback:\n${feedback.map((f) => `- ${f.rating}: ${f.recipe}${f.note ? ` (${f.note})` : ""}`).join("\n")}`,
+  ]
+    .filter(Boolean)
+    .join("\n");
+}
+
+// ---------- Multi-day meal plan ----------
+
+const PLAN_SYSTEM = `You are a meal planner behind a voice assistant. Goals: zero food waste and a short shopping list.
+Rules:
+- Use pantry items that expire soonest on the earliest days.
+- Reuse the same bought ingredients across several days so the shopping list stays short.
+- Vary cuisines and main ingredients from day to day.
+- Assume salt, pepper, cooking oil and water are always available.
+- At most 3 missing ingredients per day.
+- NEVER use an ingredient the household is allergic to. Avoid their dislikes. Learn from past feedback.
+Respond with ONLY a JSON array, one object per day in the given order, matching:
+[{"day": string, "recipe": string, "minutes": number, "uses": string[], "missing": string[]}]`;
+
+export async function generateMealPlan(opts: {
+  pantry: PantryItem[];
+  profile: HouseholdProfile;
+  feedback: Feedback[];
+  days: string[];
+  meal: string;
+  maxMinutes?: number;
+}): Promise<{ days: PlanDay[]; skipped: Array<{ day: string; recipe: string; allergen: string }> }> {
+  const prompt = [
+    `Pantry (soonest expiry first):\n${opts.pantry.map((p) => `- ${describe(p)}`).join("\n")}`,
+    householdContext(opts.profile, opts.feedback),
+    `Plan ${opts.meal} for these days, in order: ${opts.days.join(", ")}.`,
+    opts.maxMinutes ? `Each meal must take at most ${opts.maxMinutes} minutes.` : "",
+  ]
+    .filter(Boolean)
+    .join("\n\n");
+
+  const planned = extractJsonArray(await converse(PLAN_SYSTEM, [{ text: prompt }], 2000))
+    .filter((d): d is Record<string, unknown> => isObject(d) && typeof d.recipe === "string")
+    .map((d, i) => ({
+      day: typeof d.day === "string" && d.day.trim() ? d.day.trim() : (opts.days[i] ?? `Day ${i + 1}`),
+      recipe: String(d.recipe),
+      minutes: Number(d.minutes) || 30,
+      uses: strings(d.uses),
+      missing: strings(d.missing).filter((m) => !STAPLES.has(m.trim().toLowerCase())),
+    }))
+    .slice(0, opts.days.length);
+
+  const days: PlanDay[] = [];
+  const skipped: Array<{ day: string; recipe: string; allergen: string }> = [];
+  for (const d of planned) {
+    const allergen = findAllergen(opts.profile, [d.recipe, ...d.uses, ...d.missing]);
+    if (allergen) skipped.push({ day: d.day, recipe: d.recipe, allergen });
+    else days.push(d);
+  }
+  return { days, skipped };
 }
