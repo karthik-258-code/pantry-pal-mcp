@@ -199,8 +199,14 @@ function cardFor(c) {
     case "list_pantry": return listCard("🥫 Pantry", bullets(c.result), true);
     case "scan_groceries": return listCard("📸 Found in your photo", bullets(c.result), true);
     case "get_shopping_list": return listCard("📝 Shopping list", bullets(c.result), false);
-    case "get_household_profile":
     case "update_household_profile": {
+      const saved = c.result.split("\n")[0].replace(/^(Saved\. )?Household: /, "").replace(/\.$/, "");
+      const card = listCard("✅ Saved to household memory", saved.split("; "), false);
+      if (card) card.classList.add("success");
+      return card;
+    }
+    case "rate_recipe": return el("div", "card success", `💾 ${c.result}`);
+    case "get_household_profile": {
       const line = c.result.split("\n")[0].replace(/^(Saved\. )?Household: /, "").replace(/\.$/, "");
       return listCard("🏠 Household", [...line.split("; "), ...bullets(c.result)], false);
     }
@@ -216,13 +222,22 @@ async function speak(text) {
   setRing("speaking");
   try {
     const r = await fetch("/api/tts", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ text }) });
-    if (!r.ok) throw new Error("tts failed");
+    if (!r.ok) {
+      const d = await r.json().catch(() => ({}));
+      throw new Error(d.error || `HTTP ${r.status}`);
+    }
     const url = URL.createObjectURL(await r.blob());
     const audio = new Audio(url);
     state.audio = audio;
     audio.onended = () => { setRing(""); URL.revokeObjectURL(url); };
     await audio.play();
-  } catch {
+  } catch (err) {
+    if (!state.voiceWarned) {
+      state.voiceWarned = true;
+      const li = el("li", "err");
+      li.append(el("span", "name", "Amazon Polly"), el("div", "", `Using browser voice instead: ${err.message}`));
+      $("mcpLog").prepend(li);
+    }
     if ("speechSynthesis" in window) {
       const u = new SpeechSynthesisUtterance(text);
       u.onend = () => setRing("");
