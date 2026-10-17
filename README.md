@@ -142,7 +142,7 @@ The default model is `us.amazon.nova-lite-v1:0` (Amazon Nova Lite through a cros
 
 ## Open-source spin-off: mcp-bedrock-bridge
 
-[`bridge/`](bridge/) is a standalone, MIT-licensed library that lets any MCP server's tools be used with the Amazon Bedrock Converse API. It covers tool schema mapping, result conversion and a tested agent loop. It's published as its own repository for the Open Source mini challenge.
+[`bridge/`](bridge/), published at [karthik-258-code/mcp-bedrock-bridge](https://github.com/karthik-258-code/mcp-bedrock-bridge), is a standalone, MIT-licensed library that lets any MCP server's tools be used with the Amazon Bedrock Converse API. It covers tool schema mapping, result conversion and a tested agent loop. It's published as its own repository for the Open Source mini challenge.
 
 ## License
 

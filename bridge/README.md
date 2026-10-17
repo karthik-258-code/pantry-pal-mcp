@@ -56,7 +56,7 @@ MCP_URL=http://127.0.0.1:3000/mcp npm run example -- "what tools do you have?"
 
 ## Origin
 
-Extracted from [Pantry Pal](../README.md), an Alexa+ MCP server built for the Amazon Developer hackathon (October 2026). Its simulated Alexa+ assistant uses this exact pattern to let Amazon Nova call 17 MCP tools.
+Extracted from [Pantry Pal](https://github.com/karthik-258-code/pantry-pal-mcp), an Alexa+ MCP server built for the Amazon Developer hackathon (October 2026). Its simulated Alexa+ assistant uses this exact pattern to let Amazon Nova call 17 MCP tools.
 
 ## License
 
