@@ -89,7 +89,8 @@ app.post("/api/tts", async (req: Request, res: Response) => {
     if (!bytes) throw new Error("Polly returned no audio");
     res.type("audio/mpeg").send(Buffer.from(bytes));
   } catch (err) {
-    // The browser falls back to its built-in voice.
+    // The browser falls back to its built-in voice; log why so it's easy to fix.
+    console.error(`Amazon Polly failed (voice ${VOICE}): ${(err as Error).message}`);
     fail(res, 502, err);
   }
 });
