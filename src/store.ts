@@ -17,13 +17,40 @@ export interface ShoppingItem {
   addedAt: string;
 }
 
+export interface HouseholdProfile {
+  people: number;
+  diet?: string;
+  allergies: string[];
+  dislikes: string[];
+  notes?: string;
+}
+
+export type Rating = "loved" | "liked" | "disliked";
+
+export interface Feedback {
+  recipe: string;
+  rating: Rating;
+  note?: string;
+  at: string;
+}
+
 export interface StoreData {
   pantry: PantryItem[];
   shopping: ShoppingItem[];
+  profile: HouseholdProfile;
+  feedback: Feedback[];
 }
 
 const DAY_MS = 24 * 60 * 60 * 1000;
+const MAX_FEEDBACK = 50;
 const DATA_FILE = path.resolve(process.env.DATA_FILE ?? "data/pantry.json");
+
+export const emptyData = (): StoreData => ({
+  pantry: [],
+  shopping: [],
+  profile: { people: 2, allergies: [], dislikes: [] },
+  feedback: [],
+});
 
 let cache: StoreData | null = null;
 let writeChain: Promise<void> = Promise.resolve();
@@ -32,10 +59,13 @@ const norm = (s: string) => s.trim().toLowerCase();
 
 async function load(): Promise<StoreData> {
   if (cache) return cache;
+  const base = emptyData();
   try {
-    cache = JSON.parse(await fs.readFile(DATA_FILE, "utf8")) as StoreData;
+    const parsed = JSON.parse(await fs.readFile(DATA_FILE, "utf8")) as Partial<StoreData>;
+    // Older data files have no profile/feedback; fill in defaults.
+    cache = { ...base, ...parsed, profile: { ...base.profile, ...parsed.profile } };
   } catch {
-    cache = { pantry: [], shopping: [] };
+    cache = base;
   }
   return cache;
 }
@@ -162,7 +192,65 @@ export async function completeShopping(names?: string[]): Promise<ShoppingItem[]
   return bought;
 }
 
-export async function resetStore(data: StoreData = { pantry: [], shopping: [] }): Promise<void> {
+// ---------- Household memory ----------
+
+function mergeList(list: string[], add: string[] = [], remove: string[] = []): string[] {
+  const removeSet = new Set(remove.map(norm));
+  const out = list.filter((x) => !removeSet.has(norm(x)));
+  for (const a of add) {
+    if (a.trim() && !out.some((x) => norm(x) === norm(a))) out.push(a.trim());
+  }
+  return out;
+}
+
+export async function getProfile(): Promise<HouseholdProfile> {
+  return structuredClone((await load()).profile);
+}
+
+export async function updateProfile(u: {
+  people?: number;
+  diet?: string;
+  notes?: string;
+  addAllergies?: string[];
+  removeAllergies?: string[];
+  addDislikes?: string[];
+  removeDislikes?: string[];
+}): Promise<HouseholdProfile> {
+  const data = await load();
+  const p = data.profile;
+  if (u.people !== undefined) p.people = u.people;
+  if (u.diet !== undefined) p.diet = u.diet.trim() || undefined;
+  if (u.notes !== undefined) p.notes = u.notes.trim() || undefined;
+  p.allergies = mergeList(p.allergies, u.addAllergies, u.removeAllergies);
+  p.dislikes = mergeList(p.dislikes, u.addDislikes, u.removeDislikes);
+  await save();
+  return structuredClone(p);
+}
+
+export function describeProfile(p: HouseholdProfile): string {
+  return [
+    `${p.people} ${p.people === 1 ? "person" : "people"}`,
+    p.diet && `diet: ${p.diet}`,
+    p.allergies.length ? `allergies: ${p.allergies.join(", ")}` : "no allergies",
+    p.dislikes.length && `dislikes: ${p.dislikes.join(", ")}`,
+    p.notes && `notes: ${p.notes}`,
+  ]
+    .filter(Boolean)
+    .join("; ");
+}
+
+export async function addFeedback(recipe: string, rating: Rating, note?: string): Promise<void> {
+  const data = await load();
+  data.feedback.push({ recipe: recipe.trim(), rating, note: note?.trim() || undefined, at: new Date().toISOString() });
+  data.feedback = data.feedback.slice(-MAX_FEEDBACK);
+  await save();
+}
+
+export async function recentFeedback(limit = 10): Promise<Feedback[]> {
+  return (await load()).feedback.slice(-limit);
+}
+
+export async function resetStore(data: StoreData = emptyData()): Promise<void> {
   cache = data;
   await save();
 }
