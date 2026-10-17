@@ -1,5 +1,7 @@
 # mcp-bedrock-bridge
 
+[![test](https://github.com/karthik-258-code/mcp-bedrock-bridge/actions/workflows/test.yml/badge.svg)](https://github.com/karthik-258-code/mcp-bedrock-bridge/actions/workflows/test.yml) [![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
+
 Use **any MCP server's tools** with **Amazon Bedrock's Converse API**, in a few lines of code.
 
 MCP servers describe tools in JSON Schema and return MCP content blocks. Bedrock's Converse API expects `toolSpec`s with strict name rules and its own `toolResult` format. Everyone wiring the two together writes the same glue code and hits the same issues: invalid tool names (`files.read`), `$schema` keys some models reject, images that need byte conversion, errors that models don't support as a `status` field, and conversations that break when roles stop alternating. This library is that glue, with tests.

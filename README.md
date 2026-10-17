@@ -1,5 +1,7 @@
 # Pantry Pal: an Alexa+ MCP server for zero-waste cooking
 
+[![CI](https://github.com/karthik-258-code/pantry-pal-mcp/actions/workflows/ci.yml/badge.svg)](https://github.com/karthik-258-code/pantry-pal-mcp/actions/workflows/ci.yml) [![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE) ![MCP 2025-11-25](https://img.shields.io/badge/MCP-2025--11--25-0f766e) ![Streamable HTTP](https://img.shields.io/badge/transport-Streamable%20HTTP-0f766e)
+
 > "Alexa, what can I cook tonight?"
 > "You could make a spinach and chicken rice bowl in 25 minutes. It uses the spinach that expires tomorrow."
 
