@@ -7,19 +7,28 @@
   <link rel="stylesheet" href="styles.css">
 </head>
 <body>
-  <div class="device">
+  <div class="app">
     <header class="topbar">
+      <div class="brand">
+        <span class="logo" aria-hidden="true"></span>
+        <span class="name">Pantry Pal</span>
+        <span class="pill">Simulated Alexa+</span>
+      </div>
       <div class="clock" id="clock"></div>
-      <div class="brand">Pantry Pal <span>simulated Alexa+ experience</span></div>
       <div class="top-actions">
-        <button id="muteBtn" class="icon-btn" title="Mute voice" aria-label="Mute voice">🔊</button>
-        <button id="mcpBtn" class="icon-btn" title="Show or hide MCP activity" aria-label="Toggle MCP activity">🧩</button>
-        <button id="resetBtn" class="icon-btn" title="New conversation" aria-label="New conversation">↺</button>
+        <button id="muteBtn" class="icon-btn" title="Mute voice" aria-label="Mute voice"></button>
+        <button id="mcpBtn" class="icon-btn" title="Show or hide tool calls" aria-label="Toggle tool calls">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="4" width="18" height="16" rx="2"/><path d="M15 4v16"/></svg>
+        </button>
+        <button id="resetBtn" class="icon-btn" title="New conversation" aria-label="New conversation">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 12a9 9 0 1 0 3-6.7"/><path d="M3 4v5h5"/></svg>
+        </button>
       </div>
     </header>
 
     <main class="stage">
       <section class="conversation" aria-live="polite">
+        <p id="status" class="status"></p>
         <p id="userSaid" class="user-said"></p>
         <h1 id="alexaSays" class="alexa-says">Hi! Ask me what to cook, show me your fridge, or plan the week.</h1>
         <div id="cards" class="cards"></div>
@@ -27,20 +36,29 @@
       </section>
 
       <aside id="mcpPanel" class="mcp-panel">
-        <h2>MCP activity <small>Streamable HTTP</small></h2>
+        <div class="panel-head">
+          <h2>Tool calls</h2>
+          <span class="muted">MCP · Streamable HTTP</span>
+        </div>
         <ol id="mcpLog"></ol>
+        <p class="empty">Calls to the Pantry Pal MCP server appear here.</p>
       </aside>
     </main>
 
     <footer class="controls">
-      <label class="icon-btn upload" title="Scan a photo" aria-label="Scan a photo">📷<input id="photoInput" type="file" accept="image/*" hidden></label>
+      <label class="icon-btn" title="Scan a photo" aria-label="Scan a photo">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 8h3l2-3h6l2 3h3v11H4z"/><circle cx="12" cy="13" r="3.5"/></svg>
+        <input id="photoInput" type="file" accept="image/*" hidden>
+      </label>
       <select id="photoSource" title="What the photo shows">
         <option value="fridge">Fridge</option>
         <option value="pantry">Shelf</option>
         <option value="receipt">Receipt</option>
       </select>
-      <input id="textInput" type="text" placeholder="Type, or tap the mic and talk…" autocomplete="off">
-      <button id="micBtn" class="mic" title="Talk" aria-label="Talk">🎤</button>
+      <input id="textInput" type="text" placeholder="Type a message, or tap the mic" autocomplete="off">
+      <button id="micBtn" class="mic" title="Talk" aria-label="Talk">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><rect x="9" y="3" width="6" height="11" rx="3"/><path d="M5 11a7 7 0 0 0 14 0"/><path d="M12 18v3"/></svg>
+      </button>
     </footer>
     <div id="ring" class="ring"></div>
   </div>

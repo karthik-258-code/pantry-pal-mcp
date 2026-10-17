@@ -1,6 +1,12 @@
-// Pantry Pal simulated Alexa+ front end. All model/tool text is rendered with textContent (never innerHTML).
+// Pantry Pal simulated Alexa+ front end.
+// Model and tool text is always rendered with textContent. Only the static icon strings below use innerHTML.
 const $ = (id) => document.getElementById(id);
-const state = { muted: false, busy: false, audio: null, rec: null };
+const state = { muted: false, busy: false, audio: null, rec: null, pollyOff: false, voiceWarned: false };
+
+const ICON_SOUND_ON =
+  '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M11 5 6 9H3v6h3l5 4z"/><path d="M15.5 8.5a5 5 0 0 1 0 7"/><path d="M18.5 5.5a9 9 0 0 1 0 13"/></svg>';
+const ICON_SOUND_OFF =
+  '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M11 5 6 9H3v6h3l5 4z"/><path d="m16 9 6 6"/><path d="m22 9-6 6"/></svg>';
 
 function el(tag, cls, text) {
   const n = document.createElement(tag);
@@ -8,28 +14,23 @@ function el(tag, cls, text) {
   if (text !== undefined) n.textContent = text;
   return n;
 }
-// Status line: always tells the user whether Alexa is listening, thinking, speaking or done.
+
+// ---------- Status line and activity bar ----------
 const STATUS = {
-  listening: "Listening... speak now, tap the mic again when you're done",
-  thinking: "Thinking...",
-  speaking: "Speaking... tap the mic to interrupt",
+  listening: "Listening. Speak now, or tap the mic again when you're done",
+  thinking: "Thinking",
+  speaking: "Speaking. Tap the mic to interrupt",
   "": "Ready. Tap the mic or type to talk",
 };
-const statusEl = el("p", "status", STATUS[""]);
-document.querySelector(".conversation").prepend(statusEl);
 function setRing(mode) {
   $("ring").className = `ring ${mode || ""}`;
-  statusEl.dataset.mode = mode || "";
-  statusEl.textContent = STATUS[mode || ""] || "";
+  $("status").dataset.mode = mode || "";
+  $("status").textContent = STATUS[mode || ""];
 }
-function setStatus(text) {
-  statusEl.textContent = text;
-}
+const setStatus = (text) => ($("status").textContent = text);
 
 // ---------- Clock ----------
 const tick = () => ($("clock").textContent = new Date().toLocaleTimeString([], { hour: "numeric", minute: "2-digit" }));
-tick();
-setInterval(tick, 15000);
 
 // ---------- Suggestion chips ----------
 const STARTERS = [
@@ -47,6 +48,7 @@ const FOLLOW_UPS = {
   receive_grocery_order: ["What can I cook tonight?", "What's for dinner tomorrow?"],
   scan_groceries: ["What's about to expire?", "What can I cook tonight?"],
   add_missing_ingredients: ["Order it", "What's on my shopping list?"],
+  update_household_profile: ["What can I cook tonight?", "What do you remember about us?"],
 };
 function showChips(list) {
   const box = $("chips");
@@ -57,7 +59,6 @@ function showChips(list) {
     box.append(b);
   }
 }
-showChips(STARTERS);
 
 // ---------- API ----------
 async function api(path, body) {
@@ -72,9 +73,9 @@ async function send(text) {
   if (!text || state.busy) return;
   state.busy = true;
   stopSpeaking();
-  $("userSaid").textContent = `“${text}”`;
+  $("userSaid").textContent = `"${text}"`;
   $("textInput").value = "";
-  $("alexaSays").textContent = "…";
+  $("alexaSays").textContent = "...";
   setRing("thinking");
   try {
     render(await api("/api/chat", { text }));
@@ -100,33 +101,48 @@ function render({ say, calls }) {
   speak(say);
 }
 
-// ---------- MCP activity log ----------
+// ---------- Tool call log ----------
 function logCall(c) {
   const li = el("li", c.isError ? "err" : "");
   li.append(el("span", "name", c.name), el("span", "ms", `${c.ms} ms`));
   const args = { ...c.input };
   if (typeof args.image_base64 === "string") args.image_base64 = `<${Math.round(args.image_base64.length / 1024)} KB image>`;
-  li.append(el("div", "", JSON.stringify(args)));
+  li.append(el("div", "args", JSON.stringify(args)));
   const d = el("details");
   d.append(el("summary", "", c.isError ? "error" : "result"), el("pre", "", c.result));
   li.append(d);
   $("mcpLog").prepend(li);
 }
 
+function logNote(name, text) {
+  const li = el("li", "err");
+  li.append(el("span", "name", name), el("div", "args", text));
+  $("mcpLog").prepend(li);
+}
+
 // ---------- Cards ----------
 const bullets = (t) => t.split("\n").filter((l) => l.startsWith("- ")).map((l) => l.slice(2));
+const splitList = (s) => (s && s !== "nothing" && s !== "n/a" ? s.split(", ").map((x) => x.trim()).filter(Boolean) : []);
+
 function expiryClass(s) {
   if (/expired|expires today/.test(s)) return "bad";
-  const m = s.match(/expires in (\d+) day/);
+  const m = s.match(/(\d+) day/);
   if (!m) return "";
-  return +m[1] <= 1 ? "bad" : +m[1] <= 3 ? "warn" : "";
+  return +m[1] <= 1 ? "bad" : +m[1] <= 3 ? "warn" : "ok";
 }
+
+function card(label, title, extraClass) {
+  const c = el("div", `card${extraClass ? ` ${extraClass}` : ""}`);
+  if (label) c.append(el("div", "card-label", label));
+  if (title) c.append(el("h3", "card-title", title));
+  return c;
+}
+
 function tags(list, cls) {
   const box = el("div", "tags");
   for (const t of list) box.append(el("span", `tag ${cls}`, t));
   return box;
 }
-const splitList = (s) => (s && s !== "nothing" && s !== "n/a" ? s.split(", ").map((x) => x.trim()).filter(Boolean) : []);
 
 function recipeCards(text) {
   const row = el("div", "carousel");
@@ -134,19 +150,22 @@ function recipeCards(text) {
     const ls = block.split("\n");
     const m = ls[0].match(/^\d+\. (.+?) \((\d+) min, serves (\d+)\)/);
     if (!m) continue;
-    const card = el("div", "card");
-    card.append(el("h3", "", m[1]), el("div", "meta", `⏱ ${m[2]} min · serves ${m[3]}`));
+    const c = card("Recipe", m[1]);
+    c.append(el("div", "meta", `${m[2]} min · serves ${m[3]}`));
     const uses = ls.find((l) => l.trim().startsWith("Uses:"));
     const missing = ls.find((l) => l.trim().startsWith("Missing:"));
-    if (uses) card.append(tags(splitList(uses.split("Uses:")[1].trim()), "use"));
-    if (missing) card.append(tags(splitList(missing.split("Missing:")[1].trim()).map((x) => `buy ${x}`), "buy"));
+    if (uses) c.append(tags(splitList(uses.split("Uses:")[1].trim()), "use"));
+    if (missing) {
+      const buy = splitList(missing.split("Missing:")[1].trim());
+      if (buy.length) c.append(tags(buy.map((x) => `buy ${x}`), "buy"));
+    }
     const steps = ls.filter((l) => /^\s+\d+\) /.test(l)).map((l) => l.replace(/^\s+\d+\) /, ""));
     if (steps.length) {
       const ol = el("ol");
       for (const s of steps) ol.append(el("li", "", s));
-      card.append(ol);
+      c.append(ol);
     }
-    row.append(card);
+    row.append(c);
   }
   return row.childElementCount ? row : null;
 }
@@ -156,30 +175,30 @@ function planCards(text) {
   for (const line of bullets(text)) {
     const m = line.match(/^(.+?): (.+?) \((\d+) min\)(?:, buy (.+))?$/);
     if (!m) continue;
-    const card = el("div", "card");
-    card.append(el("div", "meta", m[1]), el("h3", "", m[2]), el("div", "meta", `⏱ ${m[3]} min`));
-    if (m[4]) card.append(tags(m[4].split(", ").map((x) => `buy ${x}`), "buy"));
-    row.append(card);
+    const c = card(m[1], m[2]);
+    c.append(el("div", "meta", `${m[3]} min`));
+    if (m[4]) c.append(tags(m[4].split(", ").map((x) => `buy ${x}`), "buy"));
+    row.append(c);
   }
   return row.childElementCount ? row : null;
 }
 
 function orderCard(text) {
-  const card = el("div", "card receipt");
   const id = (text.match(/order (PP-\d+)/i) || [])[1] || "";
-  card.append(el("h3", "", `🛒 Order ${id}`), el("div", "meta", "Demo Grocer (simulated) · nothing charged yet"));
+  const c = card(`Order ${id}`, "Demo Grocer (simulated)", "receipt");
+  c.append(el("div", "meta", "Nothing is charged until you confirm"));
   for (const l of bullets(text)) {
     const m = l.match(/^(\d+) x (.+) @ (\$[\d.]+) = (\$[\d.]+)$/);
     if (!m) continue;
     const line = el("div", "line");
     line.append(el("span", "", `${m[1]} × ${m[2]}`), el("span", "", m[4]));
-    card.append(line);
+    c.append(line);
   }
   const total = (text.match(/comes to (\$[\d.]+)/) || [])[1];
   if (total) {
     const t = el("div", "line total");
     t.append(el("span", "", "Total incl. delivery"), el("span", "", total));
-    card.append(t);
+    c.append(t);
   }
   const actions = el("div", "actions");
   const yes = el("button", "btn primary", "Place order");
@@ -187,52 +206,61 @@ function orderCard(text) {
   yes.onclick = () => send("Yes, place the order");
   no.onclick = () => send("No, don't place the order");
   actions.append(yes, no);
-  card.append(actions);
-  return card;
+  c.append(actions);
+  return c;
 }
 
-function listCard(title, items, withExpiry) {
+/** A list card. Items like "6 eggs (expires in 3 days)" become a name plus a coloured badge. */
+function listCard(label, items, extraClass) {
   if (!items.length) return null;
-  const card = el("div", "card");
-  card.append(el("h3", "", title));
+  const c = card(label, "", extraClass);
   const ul = el("ul", "rows");
   for (const it of items) {
     const li = el("li");
-    li.append(el("span", `dot ${withExpiry ? expiryClass(it) : ""}`), el("span", "", it));
+    const m = it.match(/^(.*?) \(((?:expires|expired|about|for) .+)\)$/);
+    if (m) {
+      li.append(el("span", "", m[1]), el("span", `badge ${expiryClass(m[2])}`, m[2]));
+    } else {
+      li.append(el("span", "", it));
+    }
     ul.append(li);
   }
-  card.append(ul);
-  return card;
+  c.append(ul);
+  return c;
 }
 
+const firstLine = (t) => t.split("\n")[0];
+const profileItems = (t) =>
+  firstLine(t).replace(/^(Saved\. )?Household: /, "").replace(/\.$/, "").split("; ").concat(bullets(t));
+
 function cardFor(c) {
-  if (c.isError) return el("div", "card error", c.result.split("\n")[0]);
+  if (c.isError) return el("div", "card error", firstLine(c.result));
   switch (c.name) {
     case "suggest_recipes": return recipeCards(c.result);
     case "plan_meals":
     case "get_meal_plan": return planCards(c.result);
     case "prepare_grocery_order": return orderCard(c.result);
-    case "list_pantry": return listCard("🥫 Pantry", bullets(c.result), true);
-    case "scan_groceries": return listCard("📸 Found in your photo", bullets(c.result), true);
-    case "get_shopping_list": return listCard("📝 Shopping list", bullets(c.result), false);
-    case "update_household_profile": {
-      const saved = c.result.split("\n")[0].replace(/^(Saved\. )?Household: /, "").replace(/\.$/, "");
-      const card = listCard("✅ Saved to household memory", saved.split("; "), false);
-      if (card) card.classList.add("success");
-      return card;
-    }
-    case "rate_recipe": return el("div", "card success", `💾 ${c.result}`);
-    case "get_household_profile": {
-      const line = c.result.split("\n")[0].replace(/^(Saved\. )?Household: /, "").replace(/\.$/, "");
-      return listCard("🏠 Household", [...line.split("; "), ...bullets(c.result)], false);
+    case "list_pantry": return listCard("Pantry", bullets(c.result));
+    case "scan_groceries": return listCard("Found in your photo", bullets(c.result));
+    case "get_shopping_list": return listCard("Shopping list", bullets(c.result));
+    case "update_household_profile": return listCard("Saved to household memory", profileItems(c.result), "success");
+    case "get_household_profile": return listCard("Household memory", profileItems(c.result));
+    case "rate_recipe": {
+      const r = card("Remembered", "", "success");
+      r.append(el("div", "", c.result));
+      return r;
     }
     case "confirm_grocery_order":
-    case "receive_grocery_order": return el("div", "card success", `✅ ${c.result.split("\n")[0]}`);
+    case "receive_grocery_order": {
+      const r = card(c.name === "confirm_grocery_order" ? "Order placed" : "Delivered", "", "success");
+      r.append(el("div", "", firstLine(c.result)));
+      return r;
+    }
     default: return null;
   }
 }
 
-// Prefer neural/online voices (Edge: "Microsoft Aria/Jenny Online (Natural)", Chrome: "Google US English").
+// ---------- Voice out: Amazon Polly, falling back to the most natural browser voice ----------
 function bestVoice() {
   if (!("speechSynthesis" in window)) return null;
   const voices = speechSynthesis.getVoices().filter((v) => v.lang && v.lang.startsWith("en"));
@@ -243,9 +271,7 @@ function bestVoice() {
   }
   return voices[0] || null;
 }
-if ("speechSynthesis" in window) speechSynthesis.getVoices(); // voices load lazily in some browsers
 
-// ---------- Voice out: Amazon Polly, with browser speech as fallback ----------
 async function speak(text) {
   if (state.muted || !text) return setRing("");
   setRing("speaking");
@@ -259,15 +285,16 @@ async function speak(text) {
     const url = URL.createObjectURL(await r.blob());
     const audio = new Audio(url);
     state.audio = audio;
-    audio.onended = () => { setRing(""); URL.revokeObjectURL(url); };
+    audio.onended = () => {
+      setRing("");
+      URL.revokeObjectURL(url);
+    };
     await audio.play();
   } catch (err) {
     state.pollyOff = true; // don't add Polly latency to every reply once it has failed
     if (!state.voiceWarned) {
       state.voiceWarned = true;
-      const li = el("li", "err");
-      li.append(el("span", "name", "Amazon Polly"), el("div", "", `Using browser voice instead: ${err.message}`));
-      $("mcpLog").prepend(li);
+      logNote("Amazon Polly", `Using browser voice instead: ${err.message}`);
     }
     if ("speechSynthesis" in window) {
       const u = new SpeechSynthesisUtterance(text);
@@ -279,6 +306,7 @@ async function speak(text) {
     } else setRing("");
   }
 }
+
 function stopSpeaking() {
   if (state.audio) state.audio.pause();
   state.audio = null;
@@ -287,11 +315,15 @@ function stopSpeaking() {
 
 // ---------- Voice in: Web Speech API (Chrome / Edge) ----------
 const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
-if (!SR) {
-  $("micBtn").disabled = true;
-  $("micBtn").title = "Voice input needs Chrome or Edge";
-  setStatus("Voice input isn't supported in this browser. Use Chrome or Edge, or type below.");
-}
+const MIC_ERRORS = {
+  "not-allowed": "Microphone blocked. Click the icon at the left of the address bar, allow the microphone, then reload.",
+  "service-not-allowed": "This browser blocked speech recognition. Try Chrome, or type instead.",
+  "no-speech": "I didn't hear anything. Tap the mic and try again.",
+  "audio-capture": "No microphone found. Check your mic in Windows sound settings.",
+  network: "Speech recognition needs the internet. Try Chrome, or type instead.",
+  aborted: "",
+};
+
 $("micBtn").onclick = () => {
   if (!SR || state.busy) return;
   if (state.rec) return state.rec.stop();
@@ -303,23 +335,14 @@ $("micBtn").onclick = () => {
   rec.maxAlternatives = 1;
   let heard = "";
   let micError = "";
-  // Safety net: some browsers never fire onend if nothing is said.
-  const guard = setTimeout(() => rec.stop(), 12000);
+  const guard = setTimeout(() => rec.stop(), 12000); // some browsers never end if nothing is said
   rec.onstart = () => setRing("listening");
-  rec.onspeechend = () => setStatus("Got it...");
+  rec.onspeechend = () => setStatus("Got it");
   rec.onresult = (e) => {
     heard = Array.from(e.results).map((r) => r[0].transcript).join("");
-    $("userSaid").textContent = `“${heard}”`;
+    $("userSaid").textContent = `"${heard}"`;
   };
   rec.onerror = (e) => {
-    const MIC_ERRORS = {
-      "not-allowed": "Microphone blocked. Click the icon at the left of the address bar, allow the microphone, then reload.",
-      "service-not-allowed": "This browser blocked speech recognition. Try Chrome, or type instead.",
-      "no-speech": "I didn't hear anything. Tap the mic and try again.",
-      "audio-capture": "No microphone found. Check your mic in Windows sound settings.",
-      network: "Speech recognition needs the internet (the browser sends audio to its speech service). Try Chrome, or type instead.",
-      aborted: "",
-    };
     micError = e.error in MIC_ERRORS ? MIC_ERRORS[e.error] : `Mic error: ${e.error}`;
   };
   rec.onend = () => {
@@ -346,6 +369,7 @@ async function downscale(file, max = 1280) {
   canvas.getContext("2d").drawImage(bmp, 0, 0, canvas.width, canvas.height);
   return canvas.toDataURL("image/jpeg", 0.85);
 }
+
 $("photoInput").onchange = async (e) => {
   const file = e.target.files && e.target.files[0];
   e.target.value = "";
@@ -353,8 +377,8 @@ $("photoInput").onchange = async (e) => {
   state.busy = true;
   stopSpeaking();
   const source = $("photoSource").value;
-  $("userSaid").textContent = `📷 ${file.name}`;
-  $("alexaSays").textContent = "Looking at your photo…";
+  $("userSaid").textContent = `Photo: ${file.name}`;
+  $("alexaSays").textContent = "Looking at your photo...";
   setRing("thinking");
   try {
     const image = await downscale(file);
@@ -372,11 +396,17 @@ $("photoInput").onchange = async (e) => {
 };
 
 // ---------- Controls ----------
-$("textInput").addEventListener("keydown", (e) => { if (e.key === "Enter") send(e.target.value); });
+$("textInput").addEventListener("keydown", (e) => {
+  if (e.key === "Enter") send(e.target.value);
+});
 $("muteBtn").onclick = () => {
   state.muted = !state.muted;
-  $("muteBtn").textContent = state.muted ? "🔇" : "🔊";
-  if (state.muted) { stopSpeaking(); setRing(""); }
+  $("muteBtn").innerHTML = state.muted ? ICON_SOUND_OFF : ICON_SOUND_ON;
+  $("muteBtn").title = state.muted ? "Unmute voice" : "Mute voice";
+  if (state.muted) {
+    stopSpeaking();
+    setRing("");
+  }
 };
 $("mcpBtn").onclick = () => document.body.classList.toggle("hide-mcp");
 $("resetBtn").onclick = async () => {
@@ -389,3 +419,16 @@ $("resetBtn").onclick = async () => {
   showChips(STARTERS);
   setRing("");
 };
+
+// ---------- Init ----------
+$("muteBtn").innerHTML = ICON_SOUND_ON;
+tick();
+setInterval(tick, 15000);
+showChips(STARTERS);
+setRing("");
+if ("speechSynthesis" in window) speechSynthesis.getVoices(); // voices load lazily in some browsers
+if (!SR) {
+  $("micBtn").disabled = true;
+  $("micBtn").title = "Voice input needs Chrome or Edge";
+  setStatus("Voice input isn't supported in this browser. Use Chrome or Edge, or type below.");
+}
