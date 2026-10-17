@@ -15,7 +15,8 @@ const token = process.env.MCP_AUTH_TOKEN?.trim();
 
 const SYSTEM = `You are a friendly voice assistant in the style of Alexa+. Today is ${new Date().toDateString()}.
 Use the Pantry Pal tools for anything about food, the pantry, recipes or shopping.
-Answer in 1-2 short spoken sentences. Never read out long lists unless asked.`;
+Answer in 1-2 short spoken sentences. Never read out long lists unless asked.
+Do not narrate your reasoning; reply only with what Alexa would say out loud.`;
 
 const client = new Client({ name: "pantry-pal-demo-agent", version: "1.0.0" });
 await client.connect(
@@ -57,7 +58,11 @@ while (true) {
 
     const toolUses = (msg.content ?? []).flatMap((c) => (c.toolUse ? [c.toolUse] : []));
     if (res.stopReason !== "tool_use" || toolUses.length === 0) {
-      const say = (msg.content ?? []).map((c) => c.text ?? "").join("").trim();
+      const say = (msg.content ?? [])
+        .map((c) => c.text ?? "")
+        .join("")
+        .replace(/<thinking>[\s\S]*?<\/thinking>/gi, "")
+        .trim();
       console.log(`\nAlexa: ${say}`);
       break;
     }
