@@ -33,6 +33,10 @@ Pantry Pal is a **self-hosted MCP server** (Streamable HTTP, MCP spec `2025-11-2
 
 | Tool | Example utterance |
 |---|---|
+| `scan_groceries` (Bedrock vision) | "Scan fridge.jpg" / "Here's my grocery receipt" |
+| `update_household_profile` | "My son is allergic to peanuts, we're a family of 4" |
+| `get_household_profile` | "What do you remember about us?" |
+| `rate_recipe` | "The kids loved the frittata" / "That was too spicy" |
 | `add_pantry_item` | "I bought 6 eggs that expire in 10 days" |
 | `use_pantry_item` | "I used 200 grams of chicken" |
 | `list_pantry` | "What's about to go bad?" |
@@ -80,6 +84,14 @@ You: what can I cook with those tonight?
   [MCP] suggest_recipes {"meal":"dinner"}
 Alexa: ...
 ```
+
+### Scan a fridge photo or receipt
+
+Put a JPEG or PNG under 3.75 MB in the `photos/` folder, for example `photos/fridge.jpg`, then tell the agent `scan fridge.jpg`. Bedrock vision identifies the food, estimates expiry dates and adds everything to the pantry. For receipts, say `scan receipt.jpg, it's a receipt`.
+
+### Household memory
+
+Allergies, diet, household size, dislikes and recipe ratings are saved in `data/pantry.json` and survive restarts. Every recipe request uses them, and any generated recipe that mentions an allergen is filtered out as a safety net.
 
 ### Expose it to a remote MCP client
 

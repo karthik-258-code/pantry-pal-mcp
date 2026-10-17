@@ -18,7 +18,8 @@ function jsonRpcError(res: Response, status: number, message: string): void {
 }
 
 const app = express();
-app.use(express.json({ limit: "1mb" }));
+// Large enough for a base64-encoded 3.75 MB photo sent to scan_groceries.
+app.use(express.json({ limit: "8mb" }));
 
 app.get("/health", (_req: Request, res: Response) => {
   res.json({ ok: true, protocolVersion: LATEST_PROTOCOL_VERSION, model: MODEL_ID });
