@@ -34,11 +34,49 @@ export interface Feedback {
   at: string;
 }
 
+export interface PlanDay {
+  day: string;
+  recipe: string;
+  minutes: number;
+  uses: string[];
+  missing: string[];
+}
+
+export interface MealPlan {
+  createdAt: string;
+  meal: string;
+  days: PlanDay[];
+}
+
+export interface OrderLine {
+  name: string;
+  packs: number;
+  unitPrice: number;
+  lineTotal: number;
+}
+
+export type OrderStatus = "pending" | "placed" | "delivered";
+
+export interface Order {
+  id: string;
+  store: string;
+  lines: OrderLine[];
+  subtotal: number;
+  deliveryFee: number;
+  total: number;
+  status: OrderStatus;
+  createdAt: string;
+  placedAt?: string;
+  deliveredAt?: string;
+}
+
 export interface StoreData {
   pantry: PantryItem[];
   shopping: ShoppingItem[];
   profile: HouseholdProfile;
   feedback: Feedback[];
+  mealPlan?: MealPlan;
+  orders: Order[];
 }
 
 const DAY_MS = 24 * 60 * 60 * 1000;
@@ -50,6 +88,7 @@ export const emptyData = (): StoreData => ({
   shopping: [],
   profile: { people: 2, allergies: [], dislikes: [] },
   feedback: [],
+  orders: [],
 });
 
 let cache: StoreData | null = null;
