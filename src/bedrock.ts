@@ -23,12 +23,27 @@ async function converse(system: string, content: ContentBlock[], maxTokens: numb
   return (res.output?.message?.content ?? []).map((c) => c.text ?? "").join("");
 }
 
+/** Pulls a JSON array out of model text: handles code fences, prose around it, and truncated output. */
 function extractJsonArray(text: string): unknown[] {
-  const match = text.match(/\[[\s\S]*\]/);
-  if (!match) throw new Error("Model did not return a JSON array");
-  const parsed = JSON.parse(match[0]) as unknown;
-  if (!Array.isArray(parsed)) throw new Error("Model did not return a JSON array");
-  return parsed;
+  const cleaned = text.replace(/```(?:json)?/gi, "");
+  const start = cleaned.indexOf("[");
+  if (start !== -1) {
+    const candidates: string[] = [];
+    const end = cleaned.lastIndexOf("]");
+    if (end > start) candidates.push(cleaned.slice(start, end + 1));
+    const lastObject = cleaned.lastIndexOf("}");
+    if (lastObject > start) candidates.push(`${cleaned.slice(start, lastObject + 1)}]`);
+    for (const c of candidates) {
+      try {
+        const parsed = JSON.parse(c) as unknown;
+        if (Array.isArray(parsed)) return parsed;
+      } catch {
+        // try the next candidate
+      }
+    }
+  }
+  const preview = cleaned.trim().slice(0, 160).replace(/\s+/g, " ");
+  throw new Error(`Model did not return a JSON array (got: "${preview}")`);
 }
 
 const strings = (v: unknown) => (Array.isArray(v) ? v.filter((s): s is string => typeof s === "string") : []);
