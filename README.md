@@ -124,7 +124,7 @@ The server binds to `127.0.0.1` by default. To reach it from a hosted client, pu
 | **Amazon Bedrock Runtime, Converse tool use** | `src/agent.ts` | The simulated Alexa+ assistant: MCP tool schemas are mapped to Bedrock `toolConfig`, and the model decides which MCP tools to call, in a loop of up to 8 steps |
 | **Amazon Bedrock Runtime, Converse with images** | `src/bedrock.ts` `scanGroceries()` | Nova vision reads fridge, shelf and receipt photos and estimates expiry dates |
 | **Amazon Bedrock Runtime, Converse** | `src/bedrock.ts` `generateMealPlan()` | Multi-day, waste-aware meal plans |
-| **Amazon Polly (neural TTS)** | `src/web.ts` `/api/tts` | Alexa-style spoken replies in the web app (`POLLY_VOICE`, default Joanna) |
+| **Amazon Polly (neural TTS)**, optional | `src/web.ts` `/api/tts` | Alexa-style spoken replies in the web app (`POLLY_VOICE`, default Joanna). If Polly is unavailable (for example, blocked by an organization SCP), the app falls back to the most natural browser voice. |
 
 The default model is `us.amazon.nova-lite-v1:0` (Amazon Nova Lite through a cross-region inference profile). You can switch to any Converse-compatible model with `BEDROCK_MODEL_ID`. The IAM identity needs `bedrock:InvokeModel` on that model or inference profile, and `polly:SynthesizeSpeech` for the web app's voice. Without Polly access, the web app falls back to the browser's built-in voice.
 

@@ -8,7 +8,23 @@ function el(tag, cls, text) {
   if (text !== undefined) n.textContent = text;
   return n;
 }
-const setRing = (mode) => ($("ring").className = `ring ${mode || ""}`);
+// Status line: always tells the user whether Alexa is listening, thinking, speaking or done.
+const STATUS = {
+  listening: "Listening... speak now, tap the mic again when you're done",
+  thinking: "Thinking...",
+  speaking: "Speaking... tap the mic to interrupt",
+  "": "Ready. Tap the mic or type to talk",
+};
+const statusEl = el("p", "status", STATUS[""]);
+document.querySelector(".conversation").prepend(statusEl);
+function setRing(mode) {
+  $("ring").className = `ring ${mode || ""}`;
+  statusEl.dataset.mode = mode || "";
+  statusEl.textContent = STATUS[mode || ""] || "";
+}
+function setStatus(text) {
+  statusEl.textContent = text;
+}
 
 // ---------- Clock ----------
 const tick = () => ($("clock").textContent = new Date().toLocaleTimeString([], { hour: "numeric", minute: "2-digit" }));
@@ -216,11 +232,25 @@ function cardFor(c) {
   }
 }
 
+// Prefer neural/online voices (Edge: "Microsoft Aria/Jenny Online (Natural)", Chrome: "Google US English").
+function bestVoice() {
+  if (!("speechSynthesis" in window)) return null;
+  const voices = speechSynthesis.getVoices().filter((v) => v.lang && v.lang.startsWith("en"));
+  const prefs = [/Natural/i, /Online/i, /Google US English/i, /Samantha/i, /Jenny|Aria/i];
+  for (const p of prefs) {
+    const v = voices.find((x) => p.test(x.name));
+    if (v) return v;
+  }
+  return voices[0] || null;
+}
+if ("speechSynthesis" in window) speechSynthesis.getVoices(); // voices load lazily in some browsers
+
 // ---------- Voice out: Amazon Polly, with browser speech as fallback ----------
 async function speak(text) {
   if (state.muted || !text) return setRing("");
   setRing("speaking");
   try {
+    if (state.pollyOff) throw new Error("Polly unavailable");
     const r = await fetch("/api/tts", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ text }) });
     if (!r.ok) {
       const d = await r.json().catch(() => ({}));
@@ -232,6 +262,7 @@ async function speak(text) {
     audio.onended = () => { setRing(""); URL.revokeObjectURL(url); };
     await audio.play();
   } catch (err) {
+    state.pollyOff = true; // don't add Polly latency to every reply once it has failed
     if (!state.voiceWarned) {
       state.voiceWarned = true;
       const li = el("li", "err");
@@ -240,6 +271,9 @@ async function speak(text) {
     }
     if ("speechSynthesis" in window) {
       const u = new SpeechSynthesisUtterance(text);
+      const voice = bestVoice();
+      if (voice) u.voice = voice;
+      u.rate = 1.03;
       u.onend = () => setRing("");
       speechSynthesis.speak(u);
     } else setRing("");
@@ -256,6 +290,7 @@ const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
 if (!SR) {
   $("micBtn").disabled = true;
   $("micBtn").title = "Voice input needs Chrome or Edge";
+  setStatus("Voice input isn't supported in this browser. Use Chrome or Edge, or type below.");
 }
 $("micBtn").onclick = () => {
   if (!SR || state.busy) return;
@@ -264,17 +299,36 @@ $("micBtn").onclick = () => {
   const rec = new SR();
   rec.lang = "en-US";
   rec.interimResults = true;
+  rec.continuous = false;
+  rec.maxAlternatives = 1;
   let heard = "";
+  let micError = "";
+  // Safety net: some browsers never fire onend if nothing is said.
+  const guard = setTimeout(() => rec.stop(), 12000);
+  rec.onstart = () => setRing("listening");
+  rec.onspeechend = () => setStatus("Got it...");
   rec.onresult = (e) => {
     heard = Array.from(e.results).map((r) => r[0].transcript).join("");
     $("userSaid").textContent = `“${heard}”`;
   };
-  rec.onerror = (e) => { $("userSaid").textContent = `(mic: ${e.error})`; };
+  rec.onerror = (e) => {
+    const MIC_ERRORS = {
+      "not-allowed": "Microphone blocked. Click the icon at the left of the address bar, allow the microphone, then reload.",
+      "service-not-allowed": "This browser blocked speech recognition. Try Chrome, or type instead.",
+      "no-speech": "I didn't hear anything. Tap the mic and try again.",
+      "audio-capture": "No microphone found. Check your mic in Windows sound settings.",
+      network: "Speech recognition needs the internet (the browser sends audio to its speech service). Try Chrome, or type instead.",
+      aborted: "",
+    };
+    micError = e.error in MIC_ERRORS ? MIC_ERRORS[e.error] : `Mic error: ${e.error}`;
+  };
   rec.onend = () => {
+    clearTimeout(guard);
     state.rec = null;
     $("micBtn").classList.remove("on");
     setRing("");
     if (heard.trim()) send(heard);
+    else setStatus(micError || "I didn't catch that. Tap the mic and try again.");
   };
   state.rec = rec;
   $("micBtn").classList.add("on");
