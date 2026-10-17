@@ -158,12 +158,26 @@ const SCAN_HINT: Record<ScanSource, string> = {
 };
 
 export async function scanGroceries(bytes: Uint8Array, format: ImageFormat, source: ScanSource): Promise<ScannedItem[]> {
-  const text = await converse(
-    SCAN_SYSTEM,
-    [{ image: { format, source: { bytes } } }, { text: `${SCAN_HINT[source]} List the food items.` }],
-    1500,
-  );
-  return extractJsonArray(text)
+  const ask = async () =>
+    extractJsonArray(
+      await converse(
+        SCAN_SYSTEM,
+        [
+          { image: { format, source: { bytes } } },
+          { text: `${SCAN_HINT[source]} List the food items (at most 25). Reply with the JSON array only.` },
+        ],
+        3000,
+      ),
+    );
+  let raw: unknown[];
+  try {
+    raw = await ask();
+  } catch (err) {
+    // Vision answers occasionally come back as prose; one retry fixes most of them.
+    console.warn(`scan_groceries: retrying after ${(err as Error).message}`);
+    raw = await ask();
+  }
+  return raw
     .filter((i): i is Record<string, unknown> => isObject(i) && typeof i.name === "string" && i.name.trim() !== "")
     .map((i) => ({
       name: String(i.name).trim(),
