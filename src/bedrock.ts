@@ -99,7 +99,7 @@ export async function generateRecipes(opts: {
       minutes: Number(r.minutes) || 30,
       servings: Number(r.servings) || opts.servings,
       uses: strings(r.uses),
-      missing: strings(r.missing).filter((m) => !STAPLES.has(m.trim().toLowerCase())),
+      missing: strings(r.missing).filter((m) => !STAPLES.has(m.trim().toLowerCase()) && !inPantry(opts.pantry, m)),
       steps: strings(r.steps).slice(0, 6),
     }));
 
@@ -160,6 +160,24 @@ export async function scanGroceries(bytes: Uint8Array, format: ImageFormat, sour
 }
 
 // ---------- Shared helpers ----------
+
+const FILLER = new Set(["fresh", "cheese", "shredded", "grated", "large", "small", "chopped", "sliced", "dried", "ground", "whole", "boneless", "skinless"]);
+const coreWords = (s: string) =>
+  s
+    .toLowerCase()
+    .split(/[^a-z]+/)
+    .filter((w) => w && !FILLER.has(w))
+    .map((w) => w.replace(/(es|s)$/, ""));
+
+/** True if the pantry already holds this ingredient, e.g. "cheddar cheese" vs "cheddar", "chicken" vs "chicken thighs". */
+function inPantry(pantry: PantryItem[], name: string): boolean {
+  const want = coreWords(name);
+  if (!want.length) return false;
+  return pantry.some((p) => {
+    const have = coreWords(p.name);
+    return have.join(" ") === want.join(" ") || (want.length === 1 && have.includes(want[0]));
+  });
+}
 
 const escapeRe = (s: string) => s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 
@@ -223,7 +241,7 @@ export async function generateMealPlan(opts: {
       recipe: String(d.recipe),
       minutes: Number(d.minutes) || 30,
       uses: strings(d.uses),
-      missing: strings(d.missing).filter((m) => !STAPLES.has(m.trim().toLowerCase())),
+      missing: strings(d.missing).filter((m) => !STAPLES.has(m.trim().toLowerCase()) && !inPantry(opts.pantry, m)),
     }))
     .slice(0, opts.days.length);
 
