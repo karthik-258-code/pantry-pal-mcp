@@ -2,8 +2,18 @@ import { promises as fs } from "node:fs";
 import path from "node:path";
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { z } from "zod";
-import { generateRecipes, MODEL_ID, scanGroceries, type ImageFormat, type Recipe } from "./bedrock.js";
+import { generateMealPlan, generateRecipes, MODEL_ID, scanGroceries, type ImageFormat, type Recipe } from "./bedrock.js";
+import { DELIVERY_FEE, money, packsFor, priceFor, STORE_NAME } from "./catalog.js";
 import * as store from "./store.js";
+
+const round2 = (n: number) => Math.round(n * 100) / 100;
+const WEEKDAYS = ["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"];
+
+/** e.g. ["Today (Saturday)", "Sunday", "Monday"] */
+function upcomingDays(n: number): string[] {
+  const today = new Date().getDay();
+  return Array.from({ length: n }, (_, i) => (i === 0 ? `Today (${WEEKDAYS[today]})` : WEEKDAYS[(today + i) % 7]));
+}
 
 const SCAN_DIR = path.resolve(process.env.SCAN_DIR ?? "photos");
 // Bedrock Converse image size limit.
@@ -15,7 +25,10 @@ and suggests recipes that use food before it expires. Keep spoken replies to 1-2
 - A photo of a fridge, shelf or receipt -> scan_groceries.
 - "We loved/hated that" -> rate_recipe.
 - Allergies, diet, family size, dislikes -> update_household_profile.
-- Ingredients for a suggested recipe -> add_missing_ingredients. Bought groceries -> mark_shopping_done.`;
+- Ingredients for a suggested recipe -> add_missing_ingredients. Bought groceries -> mark_shopping_done.
+- "Plan the week" -> plan_meals (it also adds missing ingredients to the shopping list).
+- "Order it" -> prepare_grocery_order, read out the total, and ONLY call confirm_grocery_order after the user explicitly says yes.
+- "Groceries arrived" -> receive_grocery_order.`;
 
 function detectFormat(b: Uint8Array): ImageFormat | undefined {
   if (b[0] === 0xff && b[1] === 0xd8) return "jpeg";
@@ -64,7 +77,7 @@ function findRecipe(query: string): Recipe | undefined {
 }
 
 export function buildServer(): McpServer {
-  const server = new McpServer({ name: "pantry-pal", version: "1.1.0" }, { instructions: INSTRUCTIONS });
+  const server = new McpServer({ name: "pantry-pal", version: "1.2.0" }, { instructions: INSTRUCTIONS });
 
   server.registerTool(
     "add_pantry_item",
@@ -308,6 +321,158 @@ export function buildServer(): McpServer {
         removeDislikes: u.remove_dislikes,
       });
       return reply(`Saved. Household: ${store.describeProfile(profile)}.`);
+    },
+  );
+
+  // ---------- Meal planning and checkout ----------
+
+  server.registerTool(
+    "plan_meals",
+    {
+      title: "Plan meals for several days",
+      description:
+        "Use Amazon Bedrock to plan meals for the next few days: expiring food first, household allergies, dislikes and feedback respected, ingredients shared across days to keep shopping short. Adds missing ingredients to the shopping list.",
+      inputSchema: {
+        days: z.number().int().min(1).max(7).default(5),
+        meal: z.string().default("dinner").describe("e.g. 'dinner', 'lunch'"),
+        max_minutes: z.number().int().positive().optional(),
+        add_to_shopping_list: z.boolean().default(true),
+      },
+      annotations: { openWorldHint: true },
+    },
+    async ({ days, meal, max_minutes, add_to_shopping_list }) => {
+      const pantry = await store.listPantry();
+      if (!pantry.length) return reply("Your pantry is empty. Scan your fridge or add a few items first.");
+      try {
+        const [profile, feedback] = await Promise.all([store.getProfile(), store.recentFeedback()]);
+        const { days: plan, skipped } = await generateMealPlan({
+          pantry,
+          profile,
+          feedback,
+          days: upcomingDays(days),
+          meal,
+          maxMinutes: max_minutes,
+        });
+        if (!plan.length) return reply("I couldn't build a safe plan. Try fewer days or relax the constraints.", true);
+        await store.saveMealPlan({ createdAt: new Date().toISOString(), meal, days: plan });
+
+        const toBuy = new Map<string, { name: string; reason: string }>();
+        for (const d of plan) {
+          for (const m of d.missing) {
+            if (!toBuy.has(m.toLowerCase())) toBuy.set(m.toLowerCase(), { name: m, reason: `${d.day}: ${d.recipe}` });
+          }
+        }
+        if (add_to_shopping_list) await store.addShoppingItems([...toBuy.values()]);
+
+        const lines = plan.map(
+          (d) => `- ${d.day}: ${d.recipe} (${d.minutes} min)${d.missing.length ? `, buy ${d.missing.join(", ")}` : ""}`,
+        );
+        const names = [...toBuy.values()].map((t) => t.name).join(", ");
+        const shopNote = !toBuy.size
+          ? "You already have everything."
+          : add_to_shopping_list
+            ? `I put ${toBuy.size} item${toBuy.size === 1 ? "" : "s"} on your shopping list: ${names}. Say "order it" to check out.`
+            : `You'd need: ${names}.`;
+        const skippedNote = skipped.length
+          ? `\nI dropped ${skipped.map((s) => `${s.recipe} (contains ${s.allergen})`).join(", ")} for safety.`
+          : "";
+        return reply(
+          `Here's your ${meal} plan for ${plan.length} day${plan.length === 1 ? "" : "s"}:\n${lines.join("\n")}\n\n${shopNote}${skippedNote}\n(Planned by Amazon Bedrock, model ${MODEL_ID})`,
+        );
+      } catch (err) {
+        return reply(`Meal planning failed: ${(err as Error).message}`, true);
+      }
+    },
+  );
+
+  server.registerTool(
+    "get_meal_plan",
+    {
+      title: "Get meal plan",
+      description: "Read the saved meal plan, e.g. 'what's for dinner tomorrow?'.",
+      inputSchema: {},
+      annotations: { readOnlyHint: true },
+    },
+    async () => {
+      const plan = await store.getMealPlan();
+      if (!plan) return reply("There's no meal plan yet. Ask me to plan the week.");
+      const made = new Date(plan.createdAt).toDateString();
+      return reply(
+        `Your ${plan.meal} plan (made ${made}):\n${plan.days.map((d) => `- ${d.day}: ${d.recipe} (${d.minutes} min)`).join("\n")}`,
+      );
+    },
+  );
+
+  server.registerTool(
+    "prepare_grocery_order",
+    {
+      title: "Prepare grocery order",
+      description: `Price the shopping list (or the named items) at ${STORE_NAME} and create a quote. Nothing is charged. Read the total to the user and ask them to confirm.`,
+      inputSchema: {
+        items: z.array(z.string().min(1)).optional().describe("Only these shopping-list items. Omit for the whole list."),
+      },
+    },
+    async ({ items }) => {
+      const list = await store.getShoppingList();
+      const wanted = items?.length ? new Set(items.map((i) => i.trim().toLowerCase())) : undefined;
+      const chosen = list.filter((s) => !wanted || wanted.has(s.name.toLowerCase()));
+      if (!chosen.length) {
+        return reply(list.length ? "None of those are on your shopping list." : "Your shopping list is empty. Plan some meals or add items first.");
+      }
+      const lines = chosen.map((s) => {
+        const packs = packsFor(s.quantity, s.unit);
+        const unitPrice = priceFor(s.name);
+        return { name: s.name, packs, unitPrice, lineTotal: round2(packs * unitPrice) };
+      });
+      const subtotal = round2(lines.reduce((sum, l) => sum + l.lineTotal, 0));
+      const order = await store.createOrder({
+        store: STORE_NAME,
+        lines,
+        subtotal,
+        deliveryFee: DELIVERY_FEE,
+        total: round2(subtotal + DELIVERY_FEE),
+      });
+      const detail = lines.map((l) => `- ${l.packs} x ${l.name} @ ${money(l.unitPrice)} = ${money(l.lineTotal)}`).join("\n");
+      return reply(
+        `Your order ${order.id} from ${STORE_NAME} has ${lines.length} item${lines.length === 1 ? "" : "s"} and comes to ${money(order.total)}, including ${money(DELIVERY_FEE)} delivery. Should I place it?\n\n${detail}\nSubtotal: ${money(subtotal)}\n\nNothing has been charged. Only call confirm_grocery_order with order_id ${order.id} after the user says yes.`,
+      );
+    },
+  );
+
+  server.registerTool(
+    "confirm_grocery_order",
+    {
+      title: "Confirm grocery order",
+      description:
+        "Place a prepared order. ONLY call this after the user explicitly confirms the total. Simulated checkout: no real payment is made.",
+      inputSchema: {
+        order_id: z.string().optional().describe("Order ID from prepare_grocery_order. Defaults to the pending quote."),
+      },
+    },
+    async ({ order_id }) => {
+      const id = order_id ?? (await store.getPendingOrder())?.id;
+      if (!id) return reply("There's no order waiting for confirmation. Ask me to prepare one first.", true);
+      const { order, error } = await store.placeOrder(id);
+      if (!order) return reply(error ?? "Couldn't place the order.", true);
+      return reply(
+        `Done! Order ${order.id} is placed for ${money(order.total)}. Delivery is expected tomorrow evening. Say "my groceries arrived" and I'll stock your pantry.\n(Simulated checkout, no real purchase was made.)`,
+      );
+    },
+  );
+
+  server.registerTool(
+    "receive_grocery_order",
+    {
+      title: "Receive grocery order",
+      description: "Mark a placed order as delivered and add its items to the pantry, e.g. 'my groceries arrived'.",
+      inputSchema: {
+        order_id: z.string().optional().describe("Defaults to the most recent placed order"),
+      },
+    },
+    async ({ order_id }) => {
+      const { order, error } = await store.receiveOrder(order_id);
+      if (!order) return reply(error ?? "Couldn't find that order.", true);
+      return reply(`Welcome home! I added ${order.lines.map((l) => l.name).join(", ")} to your pantry.`);
     },
   );
 
