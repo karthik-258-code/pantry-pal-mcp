@@ -16,6 +16,25 @@ function upcomingDays(n: number): string[] {
 }
 
 const SCAN_DIR = path.resolve(process.env.SCAN_DIR ?? "photos");
+
+// MCP Apps: tools point at a ui:// resource that hosts render in a sandboxed iframe.
+const APP_URI = "ui://pantry-pal/app.html";
+const APP_MIME = "text/html;profile=mcp-app";
+const APP_HTML = path.resolve(process.env.APP_HTML ?? "apps/dist/mcp-app.html");
+const UI_META = { ui: { resourceUri: APP_URI } };
+
+async function appHtml(): Promise<string> {
+  try {
+    return await fs.readFile(APP_HTML, "utf8");
+  } catch {
+    return `<!doctype html><meta charset="utf-8"><p style="font-family:system-ui;padding:12px">The Pantry Pal UI isn't built yet. Run <code>npm run build:apps</code> and call the tool again.</p>`;
+  }
+}
+
+/** Shape shared with the View (apps/src/mcp-app.ts). */
+function pantryItem(i: store.PantryItem) {
+  return { name: i.name, quantity: i.quantity, unit: i.unit, expiresInDays: store.daysLeft(i) ?? null, label: store.describe(i) };
+}
 // Bedrock Converse image size limit.
 const MAX_IMAGE_BYTES = 3_750_000;
 
@@ -54,8 +73,12 @@ async function loadImage(imagePath?: string, imageBase64?: string): Promise<Uint
 // Shared across stateless requests so a follow-up like "add what I'm missing for the frittata" works.
 let lastRecipes: Recipe[] = [];
 
-function reply(text: string, isError = false) {
-  return { content: [{ type: "text" as const, text }], ...(isError ? { isError: true } : {}) };
+function reply(text: string, isError = false, structuredContent?: Record<string, unknown>) {
+  return {
+    content: [{ type: "text" as const, text }],
+    ...(structuredContent ? { structuredContent } : {}),
+    ...(isError ? { isError: true } : {}),
+  };
 }
 
 function findRecipe(query: string): Recipe | undefined {
@@ -77,7 +100,20 @@ function findRecipe(query: string): Recipe | undefined {
 }
 
 export function buildServer(): McpServer {
-  const server = new McpServer({ name: "pantry-pal", version: "1.2.0" }, { instructions: INSTRUCTIONS });
+  const server = new McpServer({ name: "pantry-pal", version: "1.3.0" }, { instructions: INSTRUCTIONS });
+
+  // ---------- MCP App (interactive UI) ----------
+
+  server.registerResource(
+    "pantry-pal-app",
+    APP_URI,
+    {
+      title: "Pantry Pal interactive view",
+      description: "Interactive pantry, recipes, meal plan and order confirmation, rendered inline by MCP Apps hosts.",
+      mimeType: APP_MIME,
+    },
+    async () => ({ contents: [{ uri: APP_URI, mimeType: APP_MIME, text: await appHtml() }] }),
+  );
 
   server.registerTool(
     "add_pantry_item",
@@ -110,6 +146,7 @@ export function buildServer(): McpServer {
         add_to_pantry: z.boolean().default(true).describe("Add the detected items to the pantry"),
       },
       annotations: { openWorldHint: true },
+      _meta: UI_META,
     },
     async ({ image_path, image_base64, source, add_to_pantry }) => {
       try {
@@ -124,17 +161,24 @@ export function buildServer(): McpServer {
         if (!items.length) return reply("I couldn't spot any food in that photo.");
 
         const lines: string[] = [];
+        const shown: Array<ReturnType<typeof pantryItem>> = [];
         for (const i of items) {
           if (add_to_pantry) {
-            lines.push(`- ${store.describe(await store.addPantryItem(i))}`);
+            const saved = await store.addPantryItem(i);
+            shown.push(pantryItem(saved));
+            lines.push(`- ${store.describe(saved)}`);
           } else {
             const unit = i.unit ? ` ${i.unit} of` : "";
             const exp = i.expiresInDays !== undefined ? ` (about ${i.expiresInDays} days)` : "";
-            lines.push(`- ${i.quantity}${unit} ${i.name}${exp}`);
+            const label = `${i.quantity}${unit} ${i.name}${exp}`;
+            shown.push({ name: i.name, quantity: i.quantity, unit: i.unit ?? "item", expiresInDays: i.expiresInDays ?? null, label });
+            lines.push(`- ${label}`);
           }
         }
         return reply(
           `I ${add_to_pantry ? "added" : "found"} ${items.length} item${items.length === 1 ? "" : "s"} from your ${source} photo:\n${lines.join("\n")}\n\n(Recognised by Amazon Bedrock, model ${MODEL_ID})`,
+          false,
+          { view: "pantry", title: `Found in your ${source} photo`, items: shown },
         );
       } catch (err) {
         return reply(`Scanning failed: ${(err as Error).message}`, true);
@@ -168,13 +212,16 @@ export function buildServer(): McpServer {
         expiring_within_days: z.number().int().min(0).optional().describe("Only items expiring within this many days"),
       },
       annotations: { readOnlyHint: true },
+      _meta: UI_META,
     },
     async ({ expiring_within_days }) => {
       const items = await store.listPantry(expiring_within_days);
+      const title = expiring_within_days !== undefined ? `Expiring within ${expiring_within_days} days` : "Pantry";
+      const view = { view: "pantry", title, items: items.map(pantryItem) };
       if (!items.length) {
-        return reply(expiring_within_days !== undefined ? "Nothing is about to expire." : "Your pantry is empty.");
+        return reply(expiring_within_days !== undefined ? "Nothing is about to expire." : "Your pantry is empty.", false, view);
       }
-      return reply(`You have ${items.length} item${items.length === 1 ? "" : "s"}:\n${items.map((i) => `- ${store.describe(i)}`).join("\n")}`);
+      return reply(`You have ${items.length} item${items.length === 1 ? "" : "s"}:\n${items.map((i) => `- ${store.describe(i)}`).join("\n")}`, false, view);
     },
   );
 
