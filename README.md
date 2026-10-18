@@ -129,6 +129,10 @@ Allergies, diet, household size, dislikes and recipe ratings are saved in `data/
 
 `plan_meals` asks Bedrock for a multi-day plan that cooks the soonest-expiring food first and reuses bought ingredients across days, then adds what's missing to the shopping list. `prepare_grocery_order` prices the list at a simulated store (`src/catalog.ts`) and returns a quote. `confirm_grocery_order` places it only after the user says yes, and quotes expire after 30 minutes. `receive_grocery_order` stocks the pantry on delivery. **No real purchases are made.**
 
+### Households and hosted storage
+
+Every request runs in a **household context** (`src/context.ts`). Locally there's one household (`default`) stored in `data/pantry.json`. For a shared server, set `HOUSEHOLD_KEYS` so each bearer key maps to a household, and `STORE=dynamodb` so data lives in **Amazon DynamoDB** (one item per household, `pk = household#<id>`). Pantry, shopping list, memory, plans, orders and recipe follow-ups are all isolated per household; nothing else in the code changes.
+
 ### Expose it to a remote MCP client
 
 The server binds to `127.0.0.1` by default. To reach it from a hosted client, put it behind an HTTPS tunnel or reverse proxy and **set `MCP_AUTH_TOKEN`**. Clients must then send `Authorization: Bearer <token>`.
@@ -141,6 +145,7 @@ The server binds to `127.0.0.1` by default. To reach it from a hosted client, pu
 | **Amazon Bedrock Runtime, Converse tool use** | `src/agent.ts` | The simulated Alexa+ assistant: MCP tool schemas are mapped to Bedrock `toolConfig`, and the model decides which MCP tools to call, in a loop of up to 8 steps |
 | **Amazon Bedrock Runtime, Converse with images** | `src/bedrock.ts` `scanGroceries()` | Nova vision reads fridge, shelf and receipt photos and estimates expiry dates |
 | **Amazon Bedrock Runtime, Converse** | `src/bedrock.ts` `generateMealPlan()` | Multi-day, waste-aware meal plans |
+| **Amazon DynamoDB** | `src/persistence.ts` | Per-household persistence for the hosted, multi-tenant server (`STORE=dynamodb`) |
 | **Amazon Polly (neural TTS)**, optional | `src/web.ts` `/api/tts` | Alexa-style spoken replies in the web app (`POLLY_VOICE`, default Joanna). If Polly is unavailable (for example, blocked by an organization SCP), the app falls back to the most natural browser voice. |
 
 The default model is `us.amazon.nova-lite-v1:0` (Amazon Nova Lite through a cross-region inference profile). You can switch to any Converse-compatible model with `BEDROCK_MODEL_ID`. The IAM identity needs `bedrock:InvokeModel` on that model or inference profile, and `polly:SynthesizeSpeech` for the web app's voice. Without Polly access, the web app falls back to the browser's built-in voice.
@@ -154,7 +159,10 @@ The default model is `us.amazon.nova-lite-v1:0` (Amazon Nova Lite through a cros
 | `HOST` / `PORT` | `127.0.0.1` / `3000` | Bind address |
 | `MCP_AUTH_TOKEN` | (unset) | Require `Authorization: Bearer <token>` |
 | `ALLOWED_ORIGINS` | (unset) | Comma-separated browser origins allowed on `/mcp` |
-| `DATA_FILE` | `data/pantry.json` | Storage location |
+| `STORE` | `file` | `file` (local JSON) or `dynamodb` (hosted, multi-household) |
+| `DATA_FILE` | `data/pantry.json` | Storage location in `file` mode |
+| `DYNAMODB_TABLE` / `DYNAMODB_REGION` | `pantry-pal` / `AWS_REGION` | Table (String partition key `pk`) used in `dynamodb` mode |
+| `HOUSEHOLD_KEYS` | (unset) | `key:household,key:household`. Each bearer key gets its own pantry, memory and orders |
 | `MCP_URL` | `http://127.0.0.1:3000/mcp` | Server URL used by the demo agent |
 
 ## Open-source spin-off: mcp-bedrock-bridge
