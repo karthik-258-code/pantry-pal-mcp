@@ -28,8 +28,9 @@ function resolveHousehold(authorization: string | undefined): string | undefined
   if (!AUTH_REQUIRED) return DEFAULT_HOUSEHOLD;
   const token = authorization?.startsWith("Bearer ") ? authorization.slice(7).trim() : "";
   if (!token) return undefined;
-  if (AUTH_TOKEN && token === AUTH_TOKEN) return DEFAULT_HOUSEHOLD;
-  return HOUSEHOLD_KEYS.get(token);
+  const mapped = HOUSEHOLD_KEYS.get(token);
+  if (mapped) return mapped;
+  return AUTH_TOKEN && token === AUTH_TOKEN ? DEFAULT_HOUSEHOLD : undefined;
 }
 const ALLOWED_ORIGINS = (process.env.ALLOWED_ORIGINS ?? "")
   .split(",")
