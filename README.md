@@ -143,7 +143,7 @@ The server is stateless, so it runs as a single Lambda function behind a Functio
 2. **Lambda:** create a function (Node.js 22, x86_64). Handler `dist/lambda.handler`, timeout 60 s, memory 512 MB. Environment: `STORE=dynamodb`, `DYNAMODB_TABLE=pantry-pal`, `BEDROCK_REGION=us-east-1`, `BEDROCK_MODEL_ID=us.amazon.nova-lite-v1:0`, `HOUSEHOLD_KEYS=<key>:<household>,...`. Add a **Function URL** (auth type NONE; the app checks bearer keys itself).
 3. **Execution role policy:** `bedrock:InvokeModel` on the model/inference profile and `dynamodb:GetItem`/`dynamodb:PutItem` on the table.
 4. **GitHub Actions:** set repository **variables** `LAMBDA_FUNCTION_NAME` and `AWS_REGION`, and **secrets** `AWS_ACCESS_KEY_ID` / `AWS_SECRET_ACCESS_KEY` for a user allowed to `lambda:UpdateFunctionCode`. `.github/workflows/deploy-lambda.yml` then deploys every push to `main`.
-5. Check `https://<id>.lambda-url.<region>.on.aws/health`, then connect any MCP host to `https://<id>.lambda-url.<region>.on.aws/mcp` with `Authorization: Bearer <key>`.
+5. Check `https://<id>.lambda-url.<region>.on.aws/health`, then connect any MCP host to `https://<id>.lambda-url.<region>.on.aws/mcp` with `Authorization: Bearer <key>`. Hosts that can't send headers (ChatGPT connectors, quick VS Code "Add Server") can use the capability URL `https://<id>.lambda-url.<region>.on.aws/h/<key>/mcp` instead; treat that URL as a secret.
 
 ### Expose it from your laptop instead
 
