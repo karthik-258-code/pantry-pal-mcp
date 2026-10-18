@@ -7,7 +7,8 @@ let client: BedrockRuntimeClient | undefined;
 
 /** Shared Bedrock Runtime client. Credentials come from the standard AWS provider chain. */
 export function bedrock(): BedrockRuntimeClient {
-  client ??= new BedrockRuntimeClient({ region: process.env.AWS_REGION ?? "us-east-1" });
+  // BEDROCK_REGION lets the server run in one region (e.g. Lambda in ap-southeast-2) while Bedrock stays in another.
+  client ??= new BedrockRuntimeClient({ region: process.env.BEDROCK_REGION ?? process.env.AWS_REGION ?? "us-east-1" });
   return client;
 }
 
