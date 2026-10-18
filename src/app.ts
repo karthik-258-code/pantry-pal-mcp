@@ -25,6 +25,29 @@ const BUILD = buildInfo();
 const ON_LAMBDA = Boolean(process.env.AWS_LAMBDA_FUNCTION_NAME);
 const maskKey = (url: string) => url.replace(/\/h\/[^/]+\/mcp/, "/h/***/mcp");
 
+/**
+ * The JSON-RPC payload for the transport. Locally express.json() has parsed it. Behind serverless-http
+ * the body can still be the raw Buffer/string the adapter attached, so parse that ourselves.
+ * Returns undefined to let the transport read the stream when nothing usable is present.
+ */
+function jsonRpcBodyOf(req: Request): unknown {
+  const b: unknown = req.body;
+  if (Buffer.isBuffer(b) || typeof b === "string") {
+    const raw = Buffer.isBuffer(b) ? b.toString("utf8") : b;
+    if (!raw.trim()) return undefined;
+    try {
+      return JSON.parse(raw);
+    } catch {
+      return undefined;
+    }
+  }
+  if (b && typeof b === "object") {
+    if (Array.isArray(b) || "jsonrpc" in (b as Record<string, unknown>)) return b;
+    return undefined; // e.g. {} when nothing was parsed
+  }
+  return undefined;
+}
+
 const AUTH_TOKEN = process.env.MCP_AUTH_TOKEN?.trim();
 // Multi-household mode: HOUSEHOLD_KEYS="<bearer-key>:<household-id>,<bearer-key>:<household-id>"
 const HOUSEHOLD_KEYS = new Map(
@@ -147,11 +170,12 @@ export function createApp() {
           mcpPost: maskKey(req.originalUrl ?? req.url),
           headerNames: Object.keys(req.headers),
           contentType: req.headers["content-type"] ?? null,
-          bodyType: typeof req.body,
-          bodyKeys: req.body && typeof req.body === "object" ? Object.keys(req.body) : null,
+          bodyType: Buffer.isBuffer(req.body) ? "buffer" : typeof req.body,
+          bodyKeys: req.body && typeof req.body === "object" && !Buffer.isBuffer(req.body) ? Object.keys(req.body) : null,
         }),
       );
     }
+    const body = jsonRpcBodyOf(req);
     const server = buildServer();
     const transport = new StreamableHTTPServerTransport({ sessionIdGenerator: undefined, enableJsonResponse: JSON_RESPONSE });
     res.on("close", () => {
@@ -162,7 +186,7 @@ export function createApp() {
       // Everything below (including tool handlers) sees this household via the store's request context.
       await runWithHousehold(String(res.locals.household ?? DEFAULT_HOUSEHOLD), async () => {
         await server.connect(transport);
-        await transport.handleRequest(req, res, req.body);
+        await transport.handleRequest(req, res, body);
       });
     } catch (err) {
       console.error("MCP request failed:", err);
