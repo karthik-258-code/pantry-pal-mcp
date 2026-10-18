@@ -5,6 +5,7 @@ import { z } from "zod";
 import { generateMealPlan, generateRecipes, MODEL_ID, scanGroceries, type ImageFormat, type Recipe } from "./bedrock.js";
 import { DELIVERY_FEE, money, packsFor, priceFor, STORE_NAME } from "./catalog.js";
 import * as store from "./store.js";
+import { currentHousehold } from "./context.js";
 
 const round2 = (n: number) => Math.round(n * 100) / 100;
 const WEEKDAYS = ["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"];
@@ -70,8 +71,10 @@ async function loadImage(imagePath?: string, imageBase64?: string): Promise<Uint
   throw new Error("Provide image_path or image_base64");
 }
 
-// Shared across stateless requests so a follow-up like "add what I'm missing for the frittata" works.
-let lastRecipes: Recipe[] = [];
+// Kept across stateless requests (per household) so "add what I'm missing for the frittata" works.
+const lastRecipesByHousehold = new Map<string, Recipe[]>();
+const lastRecipes = () => lastRecipesByHousehold.get(currentHousehold()) ?? [];
+const rememberRecipes = (recipes: Recipe[]) => lastRecipesByHousehold.set(currentHousehold(), recipes);
 
 function reply(text: string, isError = false, structuredContent?: Record<string, unknown>) {
   return {
@@ -88,7 +91,7 @@ function findRecipe(query: string): Recipe | undefined {
     .filter((w) => w.length > 2 && !["the", "and", "for", "one"].includes(w));
   let best: Recipe | undefined;
   let bestScore = 0;
-  for (const r of lastRecipes) {
+  for (const r of lastRecipes()) {
     const name = r.name.toLowerCase();
     const score = words.filter((w) => name.includes(w)).length;
     if (score > bestScore) {
@@ -257,7 +260,7 @@ export function buildServer(): McpServer {
           maxMinutes: max_minutes,
         });
         if (!recipes.length) return reply("I couldn't come up with a safe recipe. Try relaxing the constraints.", true);
-        lastRecipes = recipes;
+        rememberRecipes(recipes);
         const spoken = recipes.map((r) => `${r.name} in ${r.minutes} minutes`).join(", or ");
         const details = recipes
           .map((r, i) =>
@@ -293,10 +296,10 @@ export function buildServer(): McpServer {
       },
     },
     async ({ recipe_name }) => {
-      if (!lastRecipes.length) return reply("Ask me for recipe ideas first.", true);
+      if (!lastRecipes().length) return reply("Ask me for recipe ideas first.", true);
       const recipe = findRecipe(recipe_name);
       if (!recipe) {
-        return reply(`I don't see "${recipe_name}" in the last suggestions: ${lastRecipes.map((r) => r.name).join(", ")}.`, true);
+        return reply(`I don't see "${recipe_name}" in the last suggestions: ${lastRecipes().map((r) => r.name).join(", ")}.`, true);
       }
       if (!recipe.missing.length) return reply(`You already have everything for ${recipe.name}.`);
       const added = await store.addShoppingItems(recipe.missing.map((name) => ({ name, reason: recipe.name })));
