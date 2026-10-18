@@ -17,6 +17,7 @@ jobs:
         run: |
           npm install --no-audit --no-fund
           npm run typecheck
+          npm test
       - name: MCP App view (typecheck + build)
         working-directory: apps
         run: |
