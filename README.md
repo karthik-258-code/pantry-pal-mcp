@@ -7,7 +7,9 @@
 
 Pantry Pal is a **self-hosted MCP server** (Streamable HTTP, MCP spec `2025-11-25`) that gives Alexa+, or any MCP client, a memory of your kitchen. It tracks what you have and when it expires, uses **Amazon Bedrock** to suggest recipes that use the soonest-expiring food first, and puts missing ingredients straight on your shopping list.
 
-**Hackathon entry:** Primary track **Alexa+ (MCP server)** · Mini challenge **AWS Builder (Amazon Bedrock)**
+**Hackathon entry:** Primary track **Alexa+ (MCP server + MCP App)** · Mini challenges **AWS Builder** (Bedrock, DynamoDB, Lambda) and **Open Source** ([mcp-bedrock-bridge](https://github.com/karthik-258-code/mcp-bedrock-bridge))
+
+**Live endpoint (AWS Lambda, Sydney):** `https://5c2h3n7uby2kadki2e37pnftiy0hmwkm.lambda-url.ap-southeast-2.on.aws/mcp`, Streamable HTTP, bearer key per household. Health: [`/health`](https://5c2h3n7uby2kadki2e37pnftiy0hmwkm.lambda-url.ap-southeast-2.on.aws/health). Judges: the key is in the Devpost submission notes.
 
 ## How it works
 
