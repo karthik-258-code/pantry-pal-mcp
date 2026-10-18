@@ -86,6 +86,13 @@ export function createApp() {
     if (req.method === "POST" && /\/mcp(?:\/|$|\?)/.test(req.url) && !req.headers["content-type"]) {
       req.headers["content-type"] = "application/json";
     }
+    // serverless-http builds a synthetic IncomingMessage without rawHeaders. Anything that rebuilds
+    // headers from rawHeaders (e.g. converting to a web-standard Request) would then see none.
+    if (!req.rawHeaders || req.rawHeaders.length === 0) {
+      req.rawHeaders = Object.entries(req.headers).flatMap(([k, v]) =>
+        Array.isArray(v) ? v.flatMap((x) => [k, x]) : v === undefined ? [] : [k, String(v)],
+      );
+    }
     next();
   });
 
