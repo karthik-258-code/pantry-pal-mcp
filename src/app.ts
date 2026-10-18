@@ -60,6 +60,21 @@ function jsonRpcError(res: Response, status: number, message: string): void {
 
 export function createApp() {
   const app = express();
+
+  // Behind the Lambda Function URL adapter, header names can arrive non-lowercased, which makes
+  // express.json() and the MCP transport miss Content-Type ("Unsupported Media Type"). Normalise them,
+  // and default MCP POSTs to JSON, the only content type Streamable HTTP allows.
+  app.use((req: Request, _res: Response, next: NextFunction) => {
+    for (const [key, value] of Object.entries(req.headers)) {
+      const lower = key.toLowerCase();
+      if (lower !== key && value !== undefined && req.headers[lower] === undefined) req.headers[lower] = value;
+    }
+    if (req.method === "POST" && /\/mcp(?:\/|$|\?)/.test(req.url) && !req.headers["content-type"]) {
+      req.headers["content-type"] = "application/json";
+    }
+    next();
+  });
+
   // Large enough for a base64-encoded 3.75 MB photo sent to scan_groceries.
   app.use(express.json({ limit: "8mb" }));
 
