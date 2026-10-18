@@ -25,7 +25,8 @@ Pantry Pal is a **self-hosted MCP server** (Streamable HTTP, MCP spec `2025-11-2
 ```
 
 - `src/server.ts`: Express app exposing `POST /mcp` with the SDK's `StreamableHTTPServerTransport` in stateless mode. Validates `Origin` and an optional bearer token.
-- `src/mcp.ts`: the 8 MCP tools, with voice-friendly responses.
+- `src/mcp.ts`: the 17 MCP tools with voice-friendly text plus `structuredContent`, and the `ui://` MCP App resource.
+- `apps/`: the MCP Apps View (pantry, recipes, plan, order receipt) that hosts render inline.
 - `src/bedrock.ts`: Amazon Bedrock Runtime `Converse` call that returns structured recipes.
 - `src/store.ts`: JSON-file storage, sorted by expiry.
 - `src/demo-agent.ts`: a **simulated Alexa+** terminal assistant. A Bedrock model plans and calls the MCP tools through the MCP client SDK.
@@ -66,6 +67,20 @@ npm run dev                   # MCP server on http://127.0.0.1:3000/mcp
 ```
 
 Check it is up with `curl http://127.0.0.1:3000/health`. The response includes the MCP protocol version that the SDK negotiates.
+
+### Interactive UI in any MCP Apps host (VS Code, Claude, ChatGPT, ...)
+
+Pantry Pal is also an **MCP App**: seven tools carry `_meta.ui.resourceUri`, pointing at the `ui://pantry-pal/app.html` resource (`text/html;profile=mcp-app`). Compliant hosts render it inline in the chat, and the View calls other tools through the host: tap **Used it** on a pantry row, **Add missing to list** on a recipe, or **Place order** on the receipt (`confirm_grocery_order` only runs on that click).
+
+```bash
+npm run build:apps        # bundles apps/ into apps/dist/mcp-app.html (one-time, and after editing apps/)
+npm run dev               # MCP server
+```
+
+- **VS Code:** this repo ships `.vscode/mcp.json`. Open the folder, open Chat, choose **Agent** mode, make sure the `pantry-pal` server is started (Command Palette: *MCP: List Servers*), then ask *"what's in my pantry?"*. The pantry View renders inline.
+- **Reference host:** `git clone https://github.com/modelcontextprotocol/ext-apps && cd ext-apps && npm install && cd examples/basic-host && SERVERS='["http://127.0.0.1:3000/mcp"]' npm start`, then open http://localhost:8080, pick `list_pantry` and click **Call Tool**.
+
+The View source is in [`apps/`](apps/) (vanilla TypeScript, `@modelcontextprotocol/ext-apps`, bundled by Vite into a single HTML file). Tools return `structuredContent` with a `view` field that the single View switches on.
 
 ### Try it with MCP Inspector
 

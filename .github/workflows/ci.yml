@@ -17,6 +17,12 @@ jobs:
         run: |
           npm install --no-audit --no-fund
           npm run typecheck
+      - name: MCP App view (typecheck + build)
+        working-directory: apps
+        run: |
+          npm install --no-audit --no-fund
+          npm run typecheck
+          npm run build
       - name: mcp-bedrock-bridge tests
         working-directory: bridge
         run: |

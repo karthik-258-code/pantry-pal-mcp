@@ -15,6 +15,7 @@
     "seed": "tsx src/seed.ts",
     "agent": "tsx src/demo-agent.ts",
     "web": "tsx src/web.ts",
+    "build:apps": "npm --prefix apps install --no-audit --no-fund && npm --prefix apps run build",
     "inspector": "npx @modelcontextprotocol/inspector"
   },
   "dependencies": {

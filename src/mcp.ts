@@ -16,6 +16,25 @@ function upcomingDays(n: number): string[] {
 }
 
 const SCAN_DIR = path.resolve(process.env.SCAN_DIR ?? "photos");
+
+// MCP Apps: tools point at a ui:// resource that hosts render in a sandboxed iframe.
+const APP_URI = "ui://pantry-pal/app.html";
+const APP_MIME = "text/html;profile=mcp-app";
+const APP_HTML = path.resolve(process.env.APP_HTML ?? "apps/dist/mcp-app.html");
+const UI_META = { ui: { resourceUri: APP_URI } };
+
+async function appHtml(): Promise<string> {
+  try {
+    return await fs.readFile(APP_HTML, "utf8");
+  } catch {
+    return `<!doctype html><meta charset="utf-8"><p style="font-family:system-ui;padding:12px">The Pantry Pal UI isn't built yet. Run <code>npm run build:apps</code> and call the tool again.</p>`;
+  }
+}
+
+/** Shape shared with the View (apps/src/mcp-app.ts). */
+function pantryItem(i: store.PantryItem) {
+  return { name: i.name, quantity: i.quantity, unit: i.unit, expiresInDays: store.daysLeft(i) ?? null, label: store.describe(i) };
+}
 // Bedrock Converse image size limit.
 const MAX_IMAGE_BYTES = 3_750_000;
 
@@ -54,8 +73,12 @@ async function loadImage(imagePath?: string, imageBase64?: string): Promise<Uint
 // Shared across stateless requests so a follow-up like "add what I'm missing for the frittata" works.
 let lastRecipes: Recipe[] = [];
 
-function reply(text: string, isError = false) {
-  return { content: [{ type: "text" as const, text }], ...(isError ? { isError: true } : {}) };
+function reply(text: string, isError = false, structuredContent?: Record<string, unknown>) {
+  return {
+    content: [{ type: "text" as const, text }],
+    ...(structuredContent ? { structuredContent } : {}),
+    ...(isError ? { isError: true } : {}),
+  };
 }
 
 function findRecipe(query: string): Recipe | undefined {
@@ -77,7 +100,20 @@ function findRecipe(query: string): Recipe | undefined {
 }
 
 export function buildServer(): McpServer {
-  const server = new McpServer({ name: "pantry-pal", version: "1.2.0" }, { instructions: INSTRUCTIONS });
+  const server = new McpServer({ name: "pantry-pal", version: "1.3.0" }, { instructions: INSTRUCTIONS });
+
+  // ---------- MCP App (interactive UI) ----------
+
+  server.registerResource(
+    "pantry-pal-app",
+    APP_URI,
+    {
+      title: "Pantry Pal interactive view",
+      description: "Interactive pantry, recipes, meal plan and order confirmation, rendered inline by MCP Apps hosts.",
+      mimeType: APP_MIME,
+    },
+    async () => ({ contents: [{ uri: APP_URI, mimeType: APP_MIME, text: await appHtml() }] }),
+  );
 
   server.registerTool(
     "add_pantry_item",
@@ -110,6 +146,7 @@ export function buildServer(): McpServer {
         add_to_pantry: z.boolean().default(true).describe("Add the detected items to the pantry"),
       },
       annotations: { openWorldHint: true },
+      _meta: UI_META,
     },
     async ({ image_path, image_base64, source, add_to_pantry }) => {
       try {
@@ -124,17 +161,24 @@ export function buildServer(): McpServer {
         if (!items.length) return reply("I couldn't spot any food in that photo.");
 
         const lines: string[] = [];
+        const shown: Array<ReturnType<typeof pantryItem>> = [];
         for (const i of items) {
           if (add_to_pantry) {
-            lines.push(`- ${store.describe(await store.addPantryItem(i))}`);
+            const saved = await store.addPantryItem(i);
+            shown.push(pantryItem(saved));
+            lines.push(`- ${store.describe(saved)}`);
           } else {
             const unit = i.unit ? ` ${i.unit} of` : "";
             const exp = i.expiresInDays !== undefined ? ` (about ${i.expiresInDays} days)` : "";
-            lines.push(`- ${i.quantity}${unit} ${i.name}${exp}`);
+            const label = `${i.quantity}${unit} ${i.name}${exp}`;
+            shown.push({ name: i.name, quantity: i.quantity, unit: i.unit ?? "item", expiresInDays: i.expiresInDays ?? null, label });
+            lines.push(`- ${label}`);
           }
         }
         return reply(
           `I ${add_to_pantry ? "added" : "found"} ${items.length} item${items.length === 1 ? "" : "s"} from your ${source} photo:\n${lines.join("\n")}\n\n(Recognised by Amazon Bedrock, model ${MODEL_ID})`,
+          false,
+          { view: "pantry", title: `Found in your ${source} photo`, items: shown },
         );
       } catch (err) {
         return reply(`Scanning failed: ${(err as Error).message}`, true);
@@ -168,13 +212,16 @@ export function buildServer(): McpServer {
         expiring_within_days: z.number().int().min(0).optional().describe("Only items expiring within this many days"),
       },
       annotations: { readOnlyHint: true },
+      _meta: UI_META,
     },
     async ({ expiring_within_days }) => {
       const items = await store.listPantry(expiring_within_days);
+      const title = expiring_within_days !== undefined ? `Expiring within ${expiring_within_days} days` : "Pantry";
+      const view = { view: "pantry", title, items: items.map(pantryItem) };
       if (!items.length) {
-        return reply(expiring_within_days !== undefined ? "Nothing is about to expire." : "Your pantry is empty.");
+        return reply(expiring_within_days !== undefined ? "Nothing is about to expire." : "Your pantry is empty.", false, view);
       }
-      return reply(`You have ${items.length} item${items.length === 1 ? "" : "s"}:\n${items.map((i) => `- ${store.describe(i)}`).join("\n")}`);
+      return reply(`You have ${items.length} item${items.length === 1 ? "" : "s"}:\n${items.map((i) => `- ${store.describe(i)}`).join("\n")}`, false, view);
     },
   );
 
@@ -192,6 +239,7 @@ export function buildServer(): McpServer {
         count: z.number().int().min(1).max(3).default(2).describe("How many recipes"),
       },
       annotations: { readOnlyHint: true, openWorldHint: true },
+      _meta: UI_META,
     },
     async ({ meal, servings, dietary, max_minutes, count }) => {
       const pantry = await store.listPantry();
@@ -223,6 +271,8 @@ export function buildServer(): McpServer {
           .join("\n\n");
         return reply(
           `You could make ${spoken}.\n\n${details}\n\nHousehold: ${store.describeProfile(profile)}.\n(Generated by Amazon Bedrock, model ${MODEL_ID})`,
+          false,
+          { view: "recipes", recipes, household: store.describeProfile(profile) },
         );
       } catch (err) {
         return reply(
@@ -339,6 +389,7 @@ export function buildServer(): McpServer {
         add_to_shopping_list: z.boolean().default(true),
       },
       annotations: { openWorldHint: true },
+      _meta: UI_META,
     },
     async ({ days, meal, max_minutes, add_to_shopping_list }) => {
       const pantry = await store.listPantry();
@@ -378,6 +429,8 @@ export function buildServer(): McpServer {
           : "";
         return reply(
           `Here's your ${meal} plan for ${plan.length} day${plan.length === 1 ? "" : "s"}:\n${lines.join("\n")}\n\n${shopNote}${skippedNote}\n(Planned by Amazon Bedrock, model ${MODEL_ID})`,
+          false,
+          { view: "plan", meal, days: plan, shopping: [...toBuy.values()].map((t) => t.name) },
         );
       } catch (err) {
         return reply(`Meal planning failed: ${(err as Error).message}`, true);
@@ -392,6 +445,7 @@ export function buildServer(): McpServer {
       description: "Read the saved meal plan, e.g. 'what's for dinner tomorrow?'.",
       inputSchema: {},
       annotations: { readOnlyHint: true },
+      _meta: UI_META,
     },
     async () => {
       const plan = await store.getMealPlan();
@@ -399,6 +453,8 @@ export function buildServer(): McpServer {
       const made = new Date(plan.createdAt).toDateString();
       return reply(
         `Your ${plan.meal} plan (made ${made}):\n${plan.days.map((d) => `- ${d.day}: ${d.recipe} (${d.minutes} min)`).join("\n")}`,
+        false,
+        { view: "plan", meal: plan.meal, days: plan.days, shopping: [] },
       );
     },
   );
@@ -411,6 +467,7 @@ export function buildServer(): McpServer {
       inputSchema: {
         items: z.array(z.string().min(1)).optional().describe("Only these shopping-list items. Omit for the whole list."),
       },
+      _meta: UI_META,
     },
     async ({ items }) => {
       const list = await store.getShoppingList();
@@ -435,6 +492,8 @@ export function buildServer(): McpServer {
       const detail = lines.map((l) => `- ${l.packs} x ${l.name} @ ${money(l.unitPrice)} = ${money(l.lineTotal)}`).join("\n");
       return reply(
         `Your order ${order.id} from ${STORE_NAME} has ${lines.length} item${lines.length === 1 ? "" : "s"} and comes to ${money(order.total)}, including ${money(DELIVERY_FEE)} delivery. Should I place it?\n\n${detail}\nSubtotal: ${money(subtotal)}\n\nNothing has been charged. Only call confirm_grocery_order with order_id ${order.id} after the user says yes.`,
+        false,
+        { view: "order", order },
       );
     },
   );
@@ -448,6 +507,7 @@ export function buildServer(): McpServer {
       inputSchema: {
         order_id: z.string().optional().describe("Order ID from prepare_grocery_order. Defaults to the pending quote."),
       },
+      _meta: UI_META,
     },
     async ({ order_id }) => {
       const id = order_id ?? (await store.getPendingOrder())?.id;
@@ -456,6 +516,14 @@ export function buildServer(): McpServer {
       if (!order) return reply(error ?? "Couldn't place the order.", true);
       return reply(
         `Done! Order ${order.id} is placed for ${money(order.total)}. Delivery is expected tomorrow evening. Say "my groceries arrived" and I'll stock your pantry.\n(Simulated checkout, no real purchase was made.)`,
+        false,
+        {
+          view: "message",
+          title: "Order placed",
+          text: `Order ${order.id} is placed for ${money(order.total)}. Delivery is expected tomorrow evening. Simulated checkout, no real purchase was made.`,
+          tone: "ok",
+          action: { label: "Groceries arrived", tool: "receive_grocery_order" },
+        },
       );
     },
   );
@@ -472,7 +540,12 @@ export function buildServer(): McpServer {
     async ({ order_id }) => {
       const { order, error } = await store.receiveOrder(order_id);
       if (!order) return reply(error ?? "Couldn't find that order.", true);
-      return reply(`Welcome home! I added ${order.lines.map((l) => l.name).join(", ")} to your pantry.`);
+      return reply(`Welcome home! I added ${order.lines.map((l) => l.name).join(", ")} to your pantry.`, false, {
+        view: "message",
+        title: "Delivered",
+        text: `Added ${order.lines.map((l) => l.name).join(", ")} to your pantry.`,
+        tone: "ok",
+      });
     },
   );
 
