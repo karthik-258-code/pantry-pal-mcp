@@ -1,0 +1,22 @@
+{
+  "name": "pantry-pal-mcp-app",
+  "private": true,
+  "version": "1.0.0",
+  "description": "MCP Apps View for Pantry Pal, bundled into a single HTML file served as a ui:// resource.",
+  "type": "module",
+  "scripts": {
+    "build": "vite build",
+    "dev": "vite build --watch",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@modelcontextprotocol/client": "^2.0.0",
+    "@modelcontextprotocol/ext-apps": "^2.0.0",
+    "zod": "^4.2.0"
+  },
+  "devDependencies": {
+    "typescript": "^5.6.0",
+    "vite": "^6.0.0",
+    "vite-plugin-singlefile": "^2.2.0"
+  }
+}
