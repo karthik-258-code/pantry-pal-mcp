@@ -133,9 +133,19 @@ Allergies, diet, household size, dislikes and recipe ratings are saved in `data/
 
 Every request runs in a **household context** (`src/context.ts`). Locally there's one household (`default`) stored in `data/pantry.json`. For a shared server, set `HOUSEHOLD_KEYS` so each bearer key maps to a household, and `STORE=dynamodb` so data lives in **Amazon DynamoDB** (one item per household, `pk = household#<id>`). Pantry, shopping list, memory, plans, orders and recipe follow-ups are all isolated per household; nothing else in the code changes.
 
-### Expose it to a remote MCP client
+### Deploy to AWS Lambda (public HTTPS endpoint)
 
-The server binds to `127.0.0.1` by default. To reach it from a hosted client, put it behind an HTTPS tunnel or reverse proxy and **set `MCP_AUTH_TOKEN`**. Clients must then send `Authorization: Bearer <token>`.
+The server is stateless, so it runs as a single Lambda function behind a Function URL (`src/lambda.ts`, via `serverless-http`). On Lambda, POST responses use JSON instead of SSE (`enableJsonResponse`), credentials come from the function's IAM role, and data lives in DynamoDB.
+
+1. **DynamoDB:** table `pantry-pal`, partition key `pk` (String).
+2. **Lambda:** create a function (Node.js 22, x86_64). Handler `dist/lambda.handler`, timeout 60 s, memory 512 MB. Environment: `STORE=dynamodb`, `DYNAMODB_TABLE=pantry-pal`, `BEDROCK_REGION=us-east-1`, `BEDROCK_MODEL_ID=us.amazon.nova-lite-v1:0`, `HOUSEHOLD_KEYS=<key>:<household>,...`. Add a **Function URL** (auth type NONE; the app checks bearer keys itself).
+3. **Execution role policy:** `bedrock:InvokeModel` on the model/inference profile and `dynamodb:GetItem`/`dynamodb:PutItem` on the table.
+4. **GitHub Actions:** set repository **variables** `LAMBDA_FUNCTION_NAME` and `AWS_REGION`, and **secrets** `AWS_ACCESS_KEY_ID` / `AWS_SECRET_ACCESS_KEY` for a user allowed to `lambda:UpdateFunctionCode`. `.github/workflows/deploy-lambda.yml` then deploys every push to `main`.
+5. Check `https://<id>.lambda-url.<region>.on.aws/health`, then connect any MCP host to `https://<id>.lambda-url.<region>.on.aws/mcp` with `Authorization: Bearer <key>`.
+
+### Expose it from your laptop instead
+
+The server binds to `127.0.0.1` by default. To reach it from a hosted client without deploying, put it behind an HTTPS tunnel and **set `MCP_AUTH_TOKEN`** or `HOUSEHOLD_KEYS`. Clients must then send `Authorization: Bearer <token>`.
 
 ## AWS integration (AWS Builder)
 
@@ -146,6 +156,7 @@ The server binds to `127.0.0.1` by default. To reach it from a hosted client, pu
 | **Amazon Bedrock Runtime, Converse with images** | `src/bedrock.ts` `scanGroceries()` | Nova vision reads fridge, shelf and receipt photos and estimates expiry dates |
 | **Amazon Bedrock Runtime, Converse** | `src/bedrock.ts` `generateMealPlan()` | Multi-day, waste-aware meal plans |
 | **Amazon DynamoDB** | `src/persistence.ts` | Per-household persistence for the hosted, multi-tenant server (`STORE=dynamodb`) |
+| **AWS Lambda + Function URL** | `src/lambda.ts`, `.github/workflows/deploy-lambda.yml` | Hosts the MCP server (Streamable HTTP, JSON responses) with IAM-role credentials, deployed from GitHub Actions |
 | **Amazon Polly (neural TTS)**, optional | `src/web.ts` `/api/tts` | Alexa-style spoken replies in the web app (`POLLY_VOICE`, default Joanna). If Polly is unavailable (for example, blocked by an organization SCP), the app falls back to the most natural browser voice. |
 
 The default model is `us.amazon.nova-lite-v1:0` (Amazon Nova Lite through a cross-region inference profile). You can switch to any Converse-compatible model with `BEDROCK_MODEL_ID`. The IAM identity needs `bedrock:InvokeModel` on that model or inference profile, and `polly:SynthesizeSpeech` for the web app's voice. Without Polly access, the web app falls back to the browser's built-in voice.
