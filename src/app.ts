@@ -10,6 +10,20 @@ import { buildServer } from "./mcp.js";
 import { MODEL_ID } from "./bedrock.js";
 import { DEFAULT_HOUSEHOLD, runWithHousehold } from "./context.js";
 import { persistence } from "./persistence.js";
+import { readFileSync } from "node:fs";
+import path from "node:path";
+
+// Written by the deploy workflow so /health can confirm which commit is live.
+function buildInfo(): Record<string, unknown> {
+  try {
+    return JSON.parse(readFileSync(path.resolve("dist/build.json"), "utf8")) as Record<string, unknown>;
+  } catch {
+    return { sha: "dev" };
+  }
+}
+const BUILD = buildInfo();
+const ON_LAMBDA = Boolean(process.env.AWS_LAMBDA_FUNCTION_NAME);
+const maskKey = (url: string) => url.replace(/\/h\/[^/]+\/mcp/, "/h/***/mcp");
 
 const AUTH_TOKEN = process.env.MCP_AUTH_TOKEN?.trim();
 // Multi-household mode: HOUSEHOLD_KEYS="<bearer-key>:<household-id>,<bearer-key>:<household-id>"
@@ -78,14 +92,23 @@ export function createApp() {
   // Large enough for a base64-encoded 3.75 MB photo sent to scan_groceries.
   app.use(express.json({ limit: "8mb" }));
 
-  app.get("/health", (_req: Request, res: Response) => {
+  app.get("/health", (req: Request, res: Response) => {
     res.json({
       ok: true,
       protocolVersion: LATEST_PROTOCOL_VERSION,
       model: MODEL_ID,
       store: persistence.kind,
       auth: AUTH_REQUIRED ? (HOUSEHOLD_KEYS.size ? "household-keys" : "token") : "none",
-      runtime: process.env.AWS_LAMBDA_FUNCTION_NAME ? "lambda" : "node",
+      runtime: ON_LAMBDA ? "lambda" : "node",
+      build: BUILD,
+      // Diagnostics: shows header names exactly as the app receives them (values omitted except content-type/accept).
+      ...(req.query.echo
+        ? {
+            receivedHeaderNames: Object.keys(req.headers),
+            contentType: req.headers["content-type"] ?? null,
+            accept: req.headers.accept ?? null,
+          }
+        : {}),
     });
   });
 
@@ -111,6 +134,17 @@ export function createApp() {
 
   // Stateless Streamable HTTP: a fresh server + transport per request, shared data store underneath.
   app.post(MCP_PATHS, async (req: Request, res: Response) => {
+    if (ON_LAMBDA) {
+      console.log(
+        JSON.stringify({
+          mcpPost: maskKey(req.originalUrl ?? req.url),
+          headerNames: Object.keys(req.headers),
+          contentType: req.headers["content-type"] ?? null,
+          bodyType: typeof req.body,
+          bodyKeys: req.body && typeof req.body === "object" ? Object.keys(req.body) : null,
+        }),
+      );
+    }
     const server = buildServer();
     const transport = new StreamableHTTPServerTransport({ sessionIdGenerator: undefined, enableJsonResponse: JSON_RESPONSE });
     res.on("close", () => {

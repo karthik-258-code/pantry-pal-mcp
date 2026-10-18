@@ -24,6 +24,7 @@ jobs:
           npm install --no-audit --no-fund
           npm run build
           npm run build:apps
+          echo "{\"sha\":\"${GITHUB_SHA::7}\",\"builtAt\":\"$(date -u +%Y-%m-%dT%H:%M:%SZ)\"}" > dist/build.json
       - name: Package (production dependencies only)
         run: |
           npm prune --omit=dev
