@@ -1,5 +1,5 @@
-import { promises as fs } from "node:fs";
-import path from "node:path";
+import { currentHousehold } from "./context.js";
+import { persistence } from "./persistence.js";
 
 export interface PantryItem {
   name: string;
@@ -81,7 +81,6 @@ export interface StoreData {
 
 const DAY_MS = 24 * 60 * 60 * 1000;
 const MAX_FEEDBACK = 50;
-const DATA_FILE = path.resolve(process.env.DATA_FILE ?? "data/pantry.json");
 
 export const emptyData = (): StoreData => ({
   pantry: [],
@@ -91,32 +90,34 @@ export const emptyData = (): StoreData => ({
   orders: [],
 });
 
-let cache: StoreData | null = null;
-let writeChain: Promise<void> = Promise.resolve();
+// One in-memory copy per household (the household comes from the request context).
+const caches = new Map<string, StoreData>();
+const writeChains = new Map<string, Promise<void>>();
 
 const norm = (s: string) => s.trim().toLowerCase();
 
 async function load(): Promise<StoreData> {
-  if (cache) return cache;
+  const household = currentHousehold();
+  const cached = caches.get(household);
+  if (cached) return cached;
   const base = emptyData();
-  try {
-    const parsed = JSON.parse(await fs.readFile(DATA_FILE, "utf8")) as Partial<StoreData>;
-    // Older data files have no profile/feedback; fill in defaults.
-    cache = { ...base, ...parsed, profile: { ...base.profile, ...parsed.profile } };
-  } catch {
-    cache = base;
-  }
-  return cache;
+  const parsed = await persistence.read(household);
+  // Older documents have no profile/feedback/orders; fill in defaults.
+  const data: StoreData = parsed ? { ...base, ...parsed, profile: { ...base.profile, ...parsed.profile } } : base;
+  caches.set(household, data);
+  return data;
 }
 
-// Serialise writes so concurrent tool calls never interleave on disk.
+// Serialise writes per household so concurrent tool calls never interleave.
 function save(): Promise<void> {
-  const snapshot = JSON.stringify(cache, null, 2);
-  writeChain = writeChain.then(async () => {
-    await fs.mkdir(path.dirname(DATA_FILE), { recursive: true });
-    await fs.writeFile(DATA_FILE, snapshot);
-  });
-  return writeChain;
+  const household = currentHousehold();
+  const snapshot = structuredClone(caches.get(household) ?? emptyData());
+  const next = (writeChains.get(household) ?? Promise.resolve()).then(() => persistence.write(household, snapshot));
+  writeChains.set(
+    household,
+    next.catch(() => undefined),
+  );
+  return next;
 }
 
 export function daysLeft(item: PantryItem): number | undefined {
@@ -356,6 +357,6 @@ export async function receiveOrder(id?: string): Promise<{ order?: Order; error?
 }
 
 export async function resetStore(data: StoreData = emptyData()): Promise<void> {
-  cache = data;
+  caches.set(currentHousehold(), data);
   await save();
 }
