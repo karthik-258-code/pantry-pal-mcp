@@ -24,7 +24,7 @@ async function converse(system: string, content: ContentBlock[], maxTokens: numb
 }
 
 /** Pulls a JSON array out of model text: handles code fences, prose around it, and truncated output. */
-function extractJsonArray(text: string): unknown[] {
+export function extractJsonArray(text: string): unknown[] {
   const cleaned = text.replace(/```(?:json)?/gi, "");
   const start = cleaned.indexOf("[");
   if (start !== -1) {
@@ -199,7 +199,7 @@ const coreWords = (s: string) =>
     .map((w) => w.replace(/(es|s)$/, ""));
 
 /** True if the pantry already holds this ingredient, e.g. "cheddar cheese" vs "cheddar", "chicken" vs "chicken thighs". */
-function inPantry(pantry: PantryItem[], name: string): boolean {
+export function inPantry(pantry: PantryItem[], name: string): boolean {
   const want = coreWords(name);
   if (!want.length) return false;
   return pantry.some((p) => {
@@ -240,6 +240,7 @@ Rules:
 - Use pantry items that expire soonest on the earliest days.
 - Reuse the same bought ingredients across several days so the shopping list stays short.
 - Vary cuisines and main ingredients from day to day.
+- Every day must be a complete main dish with a protein or hearty base, never just a side (no plain garlic bread, salad or toast on its own).
 - Assume salt, pepper, cooking oil and water are always available.
 - At most 3 missing ingredients per day.
 - NEVER use an ingredient the household is allergic to. Avoid their dislikes. Learn from past feedback.

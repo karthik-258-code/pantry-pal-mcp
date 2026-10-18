@@ -12,6 +12,7 @@
     "build": "tsc",
     "start": "node dist/server.js",
     "typecheck": "tsc --noEmit",
+    "test": "node --import tsx --test test/app.test.ts",
     "seed": "tsx src/seed.ts",
     "agent": "tsx src/demo-agent.ts",
     "web": "tsx src/web.ts",
