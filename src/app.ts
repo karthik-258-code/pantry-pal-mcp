@@ -34,10 +34,20 @@ const JSON_RESPONSE = process.env.MCP_JSON_RESPONSE === "true" || Boolean(proces
 export const authMode = (): string =>
   AUTH_REQUIRED ? (HOUSEHOLD_KEYS.size ? `${HOUSEHOLD_KEYS.size} household key(s)` : "token") : "off";
 
-/** Returns the household for a request, or undefined when the credentials are missing/invalid. */
-function resolveHousehold(authorization: string | undefined): string | undefined {
+/**
+ * Credential for a request: `Authorization: Bearer <key>`, or the key embedded in the path
+ * (`/h/<key>/mcp`) for hosts such as ChatGPT connectors that cannot send custom headers.
+ */
+function credentialOf(req: Request): string {
+  const inPath = /^\/h\/([^/]+)\/mcp(?:\/|$|\?)/.exec(req.originalUrl ?? req.url ?? "");
+  if (inPath) return decodeURIComponent(inPath[1]);
+  const auth = req.headers.authorization;
+  return auth?.startsWith("Bearer ") ? auth.slice(7).trim() : "";
+}
+
+/** Returns the household for a credential, or undefined when it is missing/invalid. */
+function resolveHousehold(token: string): string | undefined {
   if (!AUTH_REQUIRED) return DEFAULT_HOUSEHOLD;
-  const token = authorization?.startsWith("Bearer ") ? authorization.slice(7).trim() : "";
   if (!token) return undefined;
   const mapped = HOUSEHOLD_KEYS.get(token);
   if (mapped) return mapped;
@@ -64,14 +74,17 @@ export function createApp() {
     });
   });
 
+  // Both endpoints serve the same MCP server: /mcp (bearer header) and /h/<key>/mcp (key in the URL).
+  const MCP_PATHS = ["/mcp", "/h/:key/mcp"];
+
   // Security required by the Streamable HTTP spec: validate Origin (DNS rebinding) and require credentials.
-  app.use("/mcp", (req: Request, res: Response, next: NextFunction) => {
+  app.use(MCP_PATHS, (req: Request, res: Response, next: NextFunction) => {
     const origin = req.headers.origin;
     if (origin && !ALLOWED_ORIGINS.includes(origin)) {
       jsonRpcError(res, 403, `Origin not allowed: ${origin}`);
       return;
     }
-    const household = resolveHousehold(req.headers.authorization);
+    const household = resolveHousehold(credentialOf(req));
     if (!household) {
       res.setHeader("WWW-Authenticate", 'Bearer realm="pantry-pal"');
       jsonRpcError(res, 401, "Unauthorized");
@@ -82,7 +95,7 @@ export function createApp() {
   });
 
   // Stateless Streamable HTTP: a fresh server + transport per request, shared data store underneath.
-  app.post("/mcp", async (req: Request, res: Response) => {
+  app.post(MCP_PATHS, async (req: Request, res: Response) => {
     const server = buildServer();
     const transport = new StreamableHTTPServerTransport({ sessionIdGenerator: undefined, enableJsonResponse: JSON_RESPONSE });
     res.on("close", () => {
@@ -106,8 +119,8 @@ export function createApp() {
     res.setHeader("Allow", "POST");
     jsonRpcError(res, 405, "Method not allowed");
   };
-  app.get("/mcp", methodNotAllowed);
-  app.delete("/mcp", methodNotAllowed);
+  app.get(MCP_PATHS, methodNotAllowed);
+  app.delete(MCP_PATHS, methodNotAllowed);
 
   return app;
 }
