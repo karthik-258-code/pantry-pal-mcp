@@ -11,6 +11,22 @@ Pantry Pal is a **self-hosted MCP server** (Streamable HTTP, MCP spec `2025-11-2
 
 **Live endpoint (AWS Lambda, Sydney):** `https://5c2h3n7uby2kadki2e37pnftiy0hmwkm.lambda-url.ap-southeast-2.on.aws/mcp`, Streamable HTTP, bearer key per household. Health: [`/health`](https://5c2h3n7uby2kadki2e37pnftiy0hmwkm.lambda-url.ap-southeast-2.on.aws/health). Judges: the key is in the Devpost submission notes.
 
+## Architecture
+
+```
+  Alexa+ / VS Code Copilot Chat / Claude / ChatGPT / MCP Inspector / Pantry Pal web app
+        │  MCP 2025-11-25 over Streamable HTTP (JSON-RPC), bearer key or /h/<key>/mcp
+        ▼
+  AWS Lambda (ap-southeast-2) + Function URL          local: node src/server.ts
+  ├─ Express app (src/app.ts)  ── same code ──►  http://127.0.0.1:3000/mcp
+  ├─ 17 MCP tools + ui:// MCP App resource (src/mcp.ts, apps/)
+  ├─ household context per request (src/context.ts)
+  ├─ Amazon Bedrock, Converse API, Nova Lite (us-east-1): recipes, plans, vision, tool use
+  └─ Amazon DynamoDB (pantry-pal table): one item per household      local: data/*.json
+```
+
+The same Express app runs locally and on Lambda. Each request resolves a household from its key, and every tool reads and writes that household's document. Tools answer with spoken text **and** `structuredContent`, so voice hosts and screen hosts (MCP Apps) share one server.
+
 ## How it works
 
 ```
@@ -79,7 +95,8 @@ npm run build:apps        # bundles apps/ into apps/dist/mcp-app.html (one-time,
 npm run dev               # MCP server
 ```
 
-- **VS Code:** this repo ships `.vscode/mcp.json`. Open the folder, open Chat, choose **Agent** mode, make sure the `pantry-pal` server is started (Command Palette: *MCP: List Servers*), then ask *"what's in my pantry?"*. The pantry View renders inline.
+- **VS Code (local):** this repo ships `.vscode/mcp.json`. Open the folder, open Chat, choose **Agent** mode, make sure the `pantry-pal` server is started (Command Palette: *MCP: List Servers*), then ask *"what's in my pantry?"*. The pantry View renders inline.
+- **VS Code (hosted):** Command Palette: *MCP: Add Server...* > HTTP > `https://<id>.lambda-url.<region>.on.aws/h/<key>/mcp` > save to **User** settings (keeps the key out of the repo). VS Code's prompted-header config (`${input:...}` in `headers`) failed silently for us, so the capability URL is the reliable route.
 - **Reference host:** `git clone https://github.com/modelcontextprotocol/ext-apps && cd ext-apps && npm install && cd examples/basic-host && SERVERS='["http://127.0.0.1:3000/mcp"]' npm start`, then open http://localhost:8080, pick `list_pantry` and click **Call Tool**.
 
 The View source is in [`apps/`](apps/) (vanilla TypeScript, `@modelcontextprotocol/ext-apps`, bundled by Vite into a single HTML file). Tools return `structuredContent` with a `view` field that the single View switches on.

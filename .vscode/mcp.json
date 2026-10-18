@@ -1,23 +1,8 @@
 {
-  "inputs": [
-    {
-      "type": "promptString",
-      "id": "pantry-pal-key",
-      "description": "Pantry Pal household key for the hosted server",
-      "password": true
-    }
-  ],
   "servers": {
     "pantry-pal": {
       "type": "http",
       "url": "http://127.0.0.1:3000/mcp"
-    },
-    "pantry-pal-cloud": {
-      "type": "http",
-      "url": "https://5c2h3n7uby2kadki2e37pnftiy0hmwkm.lambda-url.ap-southeast-2.on.aws/mcp",
-      "headers": {
-        "Authorization": "Bearer ${input:pantry-pal-key}"
-      }
     }
   }
 }
